@@ -135,8 +135,8 @@ associated off-chain backend components introduced in issue #6.
 ### Build Commands
 ```bash
 # Build optimized WASM
-cd contracts/soroban
-cargo build --target wasm32-unknown-unknown --release
+cd contracts
+cargo build --workspace --target wasm32-unknown-unknown --release
 
 # Further size optimization with wasm-opt (install via binaryen)
 wasm-opt -Oz \

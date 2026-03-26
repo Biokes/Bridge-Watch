@@ -98,7 +98,9 @@ The project is structured around five core layers:
 ```
 stellar-bridge-watch/
 ├── contracts/
-│   └── soroban/
+│   ├── Cargo.toml          # workspace (soroban + transfer_state_machine)
+│   ├── soroban/            # Bridge Watch main Soroban package
+│   └── transfer_state_machine/  # bridge transfer lifecycle state machine (#16)
 ├── backend/
 │   ├── src/
 │   │   ├── api/

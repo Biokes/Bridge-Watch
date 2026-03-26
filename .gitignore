@@ -35,9 +35,9 @@ coverage/
 # Docker
 docker-compose.override.yml
 
-# Rust / Soroban
-contracts/soroban/target/
-contracts/soroban/Cargo.lock
+# Rust / Soroban (workspace root: contracts/)
+contracts/target/
+# Ephemeral snapshot output from local `cargo test` (do not bulk-commit)
 contracts/soroban/test_snapshots/
 
 # Editor-specific

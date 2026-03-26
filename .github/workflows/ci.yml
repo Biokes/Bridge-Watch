@@ -101,9 +101,9 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Build contracts
-        working-directory: contracts/soroban
-        run: cargo build --target wasm32-unknown-unknown --release
+        working-directory: contracts
+        run: cargo build --workspace --target wasm32-unknown-unknown --release
 
       - name: Run contract tests
-        working-directory: contracts/soroban
-        run: cargo test
+        working-directory: contracts
+        run: cargo test --workspace

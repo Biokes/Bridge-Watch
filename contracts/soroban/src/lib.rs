@@ -5,6 +5,7 @@
 #[cfg(test)]
 pub mod governance;
 pub mod liquidity_pool;
+pub mod reputation_system;
 #[cfg(test)]
 pub mod insurance_pool;
 #[cfg(test)]
@@ -174,6 +175,8 @@ pub enum DataKey {
     LiquidityDepthHistory(String),
     /// Registered asset pairs with liquidity depth data.
     LiquidityPairs,
+    /// Historical price records for an asset (Vec<PriceRecord>).
+    PriceHistory(String),
 }
 
 #[contract]
@@ -271,7 +274,9 @@ impl BridgeWatchContract {
     /// Submit a price record for an asset.
     ///
     /// `caller` must be the contract admin, a `SuperAdmin`, or a
-    /// `PriceSubmitter`.
+    /// `PriceSubmitter`. The record is stored as the latest price and
+    /// also appended to the asset's historical price series for
+    /// time-range queries via [`get_price_history`].
     pub fn submit_price(
         env: Env,
         caller: Address,
