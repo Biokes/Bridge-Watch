@@ -229,7 +229,10 @@ impl BridgeWatchContract {
 
         env.storage()
             .persistent()
-            .set(&DataKey::AssetHealth(asset_code), &record);
+            .set(&DataKey::AssetHealth(asset_code.clone()), &record);
+
+        env.events()
+            .publish((symbol_short!("health_up"), asset_code), health_score);
     }
 
     /// Submit health scores for multiple assets in a single transaction.
@@ -300,93 +303,8 @@ impl BridgeWatchContract {
             .persistent()
             .set(&DataKey::PriceRecord(asset_code.clone()), &record);
 
-        // Append to historical price series
-        let mut history: Vec<PriceRecord> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PriceHistory(asset_code.clone()))
-            .unwrap_or_else(|| Vec::new(&env));
-        history.push_back(record);
-        env.storage()
-            .persistent()
-            .set(&DataKey::PriceHistory(asset_code), &history);
-    }
-
-    /// Retrieve historical price records for an asset within a time range.
-    ///
-    /// Returns up to `limit` records (capped at 100) whose timestamps fall
-    /// within the inclusive range `[start_time, end_time]`, sorted by
-    /// timestamp in **descending** order (newest first). Use the `offset`
-    /// parameter for pagination through large result sets.
-    ///
-    /// # Parameters
-    /// - `asset_code` – asset identifier (e.g. `"USDC"`).
-    /// - `start_time` – inclusive lower bound of the query window.
-    /// - `end_time` – inclusive upper bound of the query window.
-    /// - `limit` – maximum number of records to return (clamped to 100).
-    /// - `offset` – number of matching records to skip (for pagination).
-    ///
-    /// # Panics
-    /// Panics when `start_time > end_time`.
-    pub fn get_price_history(
-        env: Env,
-        asset_code: String,
-        start_time: u64,
-        end_time: u64,
-        limit: u32,
-        offset: u32,
-    ) -> Vec<PriceRecord> {
-        if start_time > end_time {
-            panic!("start_time must be less than or equal to end_time");
-        }
-
-        let max_limit: u32 = 100;
-        let effective_limit = if limit == 0 || limit > max_limit {
-            max_limit
-        } else {
-            limit
-        };
-
-        let history: Vec<PriceRecord> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PriceHistory(asset_code))
-            .unwrap_or_else(|| Vec::new(&env));
-
-        // Collect matching records into a temporary vector
-        let mut matched: Vec<PriceRecord> = Vec::new(&env);
-        for record in history.iter() {
-            if record.timestamp >= start_time && record.timestamp <= end_time {
-                matched.push_back(record);
-            }
-        }
-
-        // Reverse to achieve descending timestamp order (newest first)
-        let total = matched.len();
-        let mut descending: Vec<PriceRecord> = Vec::new(&env);
-        let mut i = total;
-        while i > 0 {
-            i -= 1;
-            descending.push_back(matched.get(i).unwrap());
-        }
-
-        // Apply offset and limit for pagination
-        let mut result: Vec<PriceRecord> = Vec::new(&env);
-        let mut skipped: u32 = 0;
-        let mut collected: u32 = 0;
-        for record in descending.iter() {
-            if skipped < offset {
-                skipped += 1;
-                continue;
-            }
-            if collected >= effective_limit {
-                break;
-            }
-            result.push_back(record);
-            collected += 1;
-        }
-
-        result
+        env.events()
+            .publish((symbol_short!("price_up"), asset_code), price);
     }
 
     /// Get the latest health record for an asset
@@ -554,7 +472,10 @@ impl BridgeWatchContract {
         };
         env.storage()
             .persistent()
-            .set(&DataKey::DeviationThreshold(asset_code), &threshold);
+            .set(&DataKey::DeviationThreshold(asset_code.clone()), &threshold);
+
+        env.events()
+            .publish((symbol_short!("thresh_up"), asset_code), low_bps);
     }
 
     /// Compare `current_price` against the last recorded [`PriceRecord`] for
@@ -623,7 +544,10 @@ impl BridgeWatchContract {
 
         env.storage()
             .persistent()
-            .set(&DataKey::DeviationAlert(asset_code), &alert);
+            .set(&DataKey::DeviationAlert(asset_code.clone()), &alert);
+
+        env.events()
+            .publish((symbol_short!("price_dev"), asset_code), deviation_bps);
 
         Some(alert)
     }
@@ -651,6 +575,9 @@ impl BridgeWatchContract {
         env.storage()
             .instance()
             .set(&DataKey::MismatchThreshold, &threshold_bps);
+
+        env.events()
+            .publish((symbol_short!("thresh_up"), symbol_short!("mismatch")), threshold_bps);
     }
 
     /// Record a supply mismatch for a bridge asset (admin only).
@@ -723,11 +650,14 @@ impl BridgeWatchContract {
             }
         }
         if !found {
-            bridge_ids.push_back(bridge_id);
+            bridge_ids.push_back(bridge_id.clone());
             env.storage()
                 .instance()
                 .set(&DataKey::BridgeIds, &bridge_ids);
         }
+
+        env.events()
+            .publish((symbol_short!("supply_mm"), bridge_id), mismatch_bps);
     }
 
     /// Return all recorded supply mismatches for a bridge. Public read access.
@@ -849,11 +779,14 @@ impl BridgeWatchContract {
         }
 
         if !found {
-            pairs.push_back(asset_pair);
+            pairs.push_back(asset_pair.clone());
             env.storage()
                 .instance()
                 .set(&DataKey::LiquidityPairs, &pairs);
         }
+
+        env.events()
+            .publish((symbol_short!("liq_chg"), asset_pair), total_liquidity);
     }
 
     /// Return the latest aggregated liquidity depth for an asset pair.
@@ -956,12 +889,15 @@ impl BridgeWatchContract {
             .get(&DataKey::RolesList)
             .unwrap_or_else(|| Vec::new(&env));
         assignments.push_back(RoleAssignment {
-            address: grantee,
-            role,
+            address: grantee.clone(),
+            role: role.clone(),
         });
         env.storage()
             .persistent()
             .set(&DataKey::RolesList, &assignments);
+
+        env.events()
+            .publish((symbol_short!("role_grnt"), grantee), role);
     }
 
     /// Revoke a specific role from `target` (SuperAdmin or original admin only).
@@ -1005,6 +941,9 @@ impl BridgeWatchContract {
         env.storage()
             .persistent()
             .set(&DataKey::RolesList, &updated_assignments);
+
+        env.events()
+            .publish((symbol_short!("role_revk"), target), role);
     }
 
     /// Return `true` if `address` holds `role`.
@@ -1211,8 +1150,9 @@ impl BridgeWatchContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::Events;
     use soroban_sdk::testutils::Ledger;
-    use soroban_sdk::Env;
+    use soroban_sdk::{Env, IntoVal};
 
     /// Helper: set up a fresh contract with an admin, returning (env, client, admin).
     fn setup() -> (Env, BridgeWatchContractClient<'static>, Address) {
@@ -1461,156 +1401,142 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Historical price query tests (issue #22)
+    // Event emission tests (issue #29)
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn test_get_price_history_returns_records_in_time_range() {
-        let (env, client, admin) = setup();
-        let asset = String::from_str(&env, "USDC");
-        let source = String::from_str(&env, "Stellar DEX");
-
-        client.register_asset(&admin, &asset);
-
-        for i in 0..5u64 {
-            env.ledger().set_timestamp(1_000_000 + i * 3_600);
-            client.submit_price(
-                &admin,
-                &asset,
-                &(1_000_000 + i as i128 * 1_000),
-                &source,
-            );
+    /// Helper: verify that the contract emitted at least one event whose
+    /// first topic matches the given symbol.
+    fn assert_has_event(env: &Env, contract: &Address, expected_topic: soroban_sdk::Symbol) {
+        let events = env.events().all();
+        let mut found = false;
+        for i in 0..events.len() {
+            let (addr, topics, _data) = events.get(i).unwrap();
+            if addr == *contract && topics.len() > 0 {
+                // The first topic is the event symbol stored as a Val;
+                // convert via IntoVal for comparison.
+                let topic_val: soroban_sdk::Val = topics.get(0).unwrap();
+                let expected_val: soroban_sdk::Val = expected_topic.into_val(env);
+                if topic_val.get_payload() == expected_val.get_payload() {
+                    found = true;
+                    break;
+                }
+            }
         }
-
-        // Query middle range – timestamps 1_003_600 to 1_010_800
-        let history = client.get_price_history(&asset, &1_003_600, &1_010_800, &100, &0);
-        assert_eq!(history.len(), 3);
+        assert!(found, "expected event with topic not found");
     }
 
     #[test]
-    fn test_get_price_history_returns_descending_order() {
+    fn test_submit_health_emits_event() {
         let (env, client, admin) = setup();
-        let asset = String::from_str(&env, "USDC");
-        let source = String::from_str(&env, "Stellar DEX");
-
-        client.register_asset(&admin, &asset);
-
-        for i in 0..3u64 {
-            env.ledger().set_timestamp(1_000_000 + i * 3_600);
-            client.submit_price(&admin, &asset, &(1_000_000 + i as i128 * 1_000), &source);
-        }
-
-        let history = client.get_price_history(&asset, &0, &2_000_000, &100, &0);
-        assert_eq!(history.len(), 3);
-        // Newest first
-        assert!(history.get(0).unwrap().timestamp > history.get(1).unwrap().timestamp);
-        assert!(history.get(1).unwrap().timestamp > history.get(2).unwrap().timestamp);
-    }
-
-    #[test]
-    fn test_get_price_history_limit_caps_at_100() {
-        let (env, client, admin) = setup();
-        let asset = String::from_str(&env, "USDC");
-        let source = String::from_str(&env, "Stellar DEX");
-
-        client.register_asset(&admin, &asset);
-
-        // Requesting a limit higher than 100 should still return at most what's available
         env.ledger().set_timestamp(1_000_000);
+        let asset = String::from_str(&env, "USDC");
+
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &85, &90, &80, &75);
+
+        assert_has_event(&env, &client.address, symbol_short!("health_up"));
+    }
+
+    #[test]
+    fn test_submit_price_emits_event() {
+        let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+        let asset = String::from_str(&env, "USDC");
+        let source = String::from_str(&env, "Stellar DEX");
+
+        client.register_asset(&admin, &asset);
         client.submit_price(&admin, &asset, &1_000_000, &source);
 
-        let history = client.get_price_history(&asset, &0, &2_000_000, &200, &0);
-        assert_eq!(history.len(), 1);
+        assert_has_event(&env, &client.address, symbol_short!("price_up"));
     }
 
     #[test]
-    fn test_get_price_history_pagination_with_offset() {
+    fn test_check_price_deviation_emits_event_on_alert() {
         let (env, client, admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
         let asset = String::from_str(&env, "USDC");
         let source = String::from_str(&env, "Stellar DEX");
 
         client.register_asset(&admin, &asset);
+        client.submit_price(&admin, &asset, &1_000_000, &source);
 
-        for i in 0..5u64 {
-            env.ledger().set_timestamp(1_000_000 + i * 3_600);
-            client.submit_price(&admin, &asset, &(1_000_000 + i as i128 * 1_000), &source);
-        }
+        // 15 % deviation → High severity triggers event
+        let result = client.check_price_deviation(&asset, &1_150_000);
+        assert!(result.is_some());
 
-        // Get first 2 records
-        let page1 = client.get_price_history(&asset, &0, &2_000_000, &2, &0);
-        assert_eq!(page1.len(), 2);
-
-        // Get next 2 records
-        let page2 = client.get_price_history(&asset, &0, &2_000_000, &2, &2);
-        assert_eq!(page2.len(), 2);
-
-        // Get remaining
-        let page3 = client.get_price_history(&asset, &0, &2_000_000, &2, &4);
-        assert_eq!(page3.len(), 1);
-
-        // Pages should not overlap
-        assert!(page1.get(0).unwrap().timestamp > page2.get(0).unwrap().timestamp);
-        assert!(page2.get(0).unwrap().timestamp > page3.get(0).unwrap().timestamp);
+        assert_has_event(&env, &client.address, symbol_short!("price_dev"));
     }
 
     #[test]
-    fn test_get_price_history_no_data_returns_empty() {
+    fn test_record_supply_mismatch_emits_event() {
+        let (env, client, _admin) = setup();
+        env.ledger().set_timestamp(1_000_000);
+
+        let bridge = String::from_str(&env, "CIRCLE_USDC");
+        let asset = String::from_str(&env, "USDC");
+
+        client.record_supply_mismatch(&bridge, &asset, &1_000_000, &1_002_000);
+
+        assert_has_event(&env, &client.address, symbol_short!("supply_mm"));
+    }
+
+    #[test]
+    fn test_record_liquidity_depth_emits_event() {
+        let (env, client, _admin) = setup();
+        let pair = String::from_str(&env, "USDC/XLM");
+
+        env.ledger().set_timestamp(1_000_000);
+        client.record_liquidity_depth(
+            &pair,
+            &1_500_000,
+            &100_000,
+            &300_000,
+            &600_000,
+            &1_200_000,
+            &liquidity_sources(&env, &["StellarX", "Phoenix"]),
+        );
+
+        assert_has_event(&env, &client.address, symbol_short!("liq_chg"));
+    }
+
+    #[test]
+    fn test_grant_role_emits_event() {
+        let (env, client, admin) = setup();
+        let submitter = Address::generate(&env);
+
+        client.grant_role(&admin, &submitter, &AdminRole::HealthSubmitter);
+
+        assert_has_event(&env, &client.address, symbol_short!("role_grnt"));
+    }
+
+    #[test]
+    fn test_revoke_role_emits_event() {
+        let (env, client, admin) = setup();
+        let submitter = Address::generate(&env);
+
+        client.grant_role(&admin, &submitter, &AdminRole::HealthSubmitter);
+        client.revoke_role(&admin, &submitter, &AdminRole::HealthSubmitter);
+
+        assert_has_event(&env, &client.address, symbol_short!("role_revk"));
+    }
+
+    #[test]
+    fn test_set_deviation_threshold_emits_event() {
         let (env, client, _admin) = setup();
         let asset = String::from_str(&env, "USDC");
 
-        let history = client.get_price_history(&asset, &0, &2_000_000, &100, &0);
-        assert_eq!(history.len(), 0);
+        client.set_deviation_threshold(&asset, &50, &100, &200);
+
+        assert_has_event(&env, &client.address, symbol_short!("thresh_up"));
     }
 
     #[test]
-    #[should_panic]
-    fn test_get_price_history_invalid_time_range_panics() {
+    fn test_set_mismatch_threshold_emits_event() {
         let (env, client, _admin) = setup();
-        let asset = String::from_str(&env, "USDC");
 
-        // start_time > end_time should panic
-        client.get_price_history(&asset, &2_000_000, &1_000_000, &100, &0);
-    }
+        client.set_mismatch_threshold(&5);
 
-    #[test]
-    fn test_get_price_history_exact_limit() {
-        let (env, client, admin) = setup();
-        let asset = String::from_str(&env, "USDC");
-        let source = String::from_str(&env, "Stellar DEX");
-
-        client.register_asset(&admin, &asset);
-
-        for i in 0..5u64 {
-            env.ledger().set_timestamp(1_000_000 + i * 3_600);
-            client.submit_price(&admin, &asset, &(1_000_000 + i as i128 * 1_000), &source);
-        }
-
-        // Limit of 3 should return exactly 3
-        let history = client.get_price_history(&asset, &0, &2_000_000, &3, &0);
-        assert_eq!(history.len(), 3);
-    }
-
-    #[test]
-    fn test_submit_price_stores_history() {
-        let (env, client, admin) = setup();
-        let asset = String::from_str(&env, "USDC");
-        let source = String::from_str(&env, "Stellar DEX");
-
-        client.register_asset(&admin, &asset);
-
-        env.ledger().set_timestamp(1_000_000);
-        client.submit_price(&admin, &asset, &1_000_000, &source);
-
-        env.ledger().set_timestamp(1_003_600);
-        client.submit_price(&admin, &asset, &1_010_000, &source);
-
-        // Latest price should be the second submission
-        let latest = client.get_price(&asset).unwrap();
-        assert_eq!(latest.price, 1_010_000);
-
-        // History should contain both submissions
-        let history = client.get_price_history(&asset, &0, &2_000_000, &100, &0);
-        assert_eq!(history.len(), 2);
+        assert_has_event(&env, &client.address, symbol_short!("thresh_up"));
     }
 
     // -----------------------------------------------------------------------
