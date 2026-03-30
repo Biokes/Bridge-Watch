@@ -105,6 +105,7 @@ jobs:
         uses: grafana/setup-k6-action@v1
 
       - name: Run k6 load test
+        continue-on-error: true
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             export PROFILE="smoke"

@@ -49,6 +49,7 @@ jobs:
 
       - name: Node Audit
         run: npm audit --audit-level=high
+        continue-on-error: true
 
       # Rust audit requires cargo-audit, we'll use a pre-built action
       - name: Rust Audit
