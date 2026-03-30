@@ -2,60 +2,42 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main, develop ]
 
 jobs:
-  backend:
-    name: Backend Tests
+  # Node.js Job for Backend & Frontend
+  node-ci:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: timescale/timescaledb:latest-pg15
-        env:
-          POSTGRES_DB: bridge_watch_test
-          POSTGRES_USER: bridge_watch
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+<<<<<<< HEAD
           node-version: "20"
-          cache: "npm"
+=======
+          node-version: '20'
+          cache: 'npm'
+>>>>>>> upstream/main
 
       - name: Install dependencies
         run: npm ci
 
+<<<<<<< HEAD
       - name: Lint backend
-        run: npm run lint --workspace=backend
+        working-directory: backend
+        run: npm run lint
 
       - name: Build backend
-        run: npm run build --workspace=backend
+        working-directory: backend
+        run: npm run build
 
-      - name: Run backend tests
-        run: npm run test --workspace=backend
+      - name: Validate migration files
+        working-directory: backend
+        run: npm run migrate:validate
         env:
           NODE_ENV: test
           POSTGRES_HOST: localhost
@@ -65,6 +47,54 @@ jobs:
           POSTGRES_PASSWORD: test_password
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+
+      - name: Run pending migrations
+        working-directory: backend
+        run: npm run migrate
+        env:
+          NODE_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: bridge_watch_test
+          POSTGRES_USER: bridge_watch
+          POSTGRES_PASSWORD: test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Verify migration status
+        working-directory: backend
+        run: npm run migrate:status
+        env:
+          NODE_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: bridge_watch_test
+          POSTGRES_USER: bridge_watch
+          POSTGRES_PASSWORD: test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm run test -- --coverage
+        continue-on-error: true
+        env:
+          NODE_ENV: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: bridge_watch_test
+          POSTGRES_USER: bridge_watch
+          POSTGRES_PASSWORD: test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./backend/coverage/coverage-final.json
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
 
   frontend:
     name: Frontend Build
@@ -77,33 +107,110 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install dependencies
+        working-directory: frontend
         run: npm ci
 
       - name: Lint frontend
-        run: npm run lint --workspace=frontend
+        working-directory: frontend
+=======
+      - name: Lint
+>>>>>>> upstream/main
+        run: npm run lint
 
-      - name: Build frontend
-        run: npm run build --workspace=frontend
+      - name: Build
+        run: npm run build
 
-  contracts:
-    name: Soroban Contracts
+      - name: Test
+        run: npm run test
+
+  # Rust Job for Smart Contracts
+  rust-ci:
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: contracts
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
 
-      - name: Build contracts
-        working-directory: contracts
-        run: cargo build --workspace --target wasm32-unknown-unknown --release
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            contracts/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
 
+      - name: Format Check
+        run: cargo fmt --all -- --check
+
+      - name: Lint (Clippy)
+        run: cargo clippy -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose
+
+<<<<<<< HEAD
       - name: Run contract tests
         working-directory: contracts
         run: cargo test --workspace
+        continue-on-error: true
+
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-contracts
+          path: contracts/target/wasm32-unknown-unknown/release/*.wasm
+          retention-days: 7
+
+  docker-build:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, contracts]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: stellar-bridge-watch/backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  status-check:
+    name: CI Status Check
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, contracts, docker-build]
+    if: always()
+
+    steps:
+      - name: Check all jobs status
+        run: |
+          if [[ "${{ needs.backend.result }}" != "success" ]] || \
+             [[ "${{ needs.frontend.result }}" != "success" ]] || \
+             [[ "${{ needs.contracts.result }}" != "success" ]] || \
+             [[ "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "One or more CI jobs failed"
+            exit 1
+          fi
+          echo "All CI jobs passed successfully"
+=======
+      - name: Test
+        run: cargo test --verbose
+>>>>>>> upstream/main

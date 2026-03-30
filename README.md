@@ -1,5 +1,10 @@
 # Stellar Bridge Watch
 
+[![CI](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/ci.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/ci.yml)
+[![Security](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/security.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/security.yml)
+[![Deploy](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/deploy.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/deploy.yml)
+[![Code Quality](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/code-quality.yml/badge.svg)](https://github.com/StellaBridge/Bridge-Watch/actions/workflows/code-quality.yml)
+
 ## Overview
 
 Stellar Bridge Watch is an open-source monitoring platform for cross-chain asset bridges, decentralized exchange liquidity, and bridged asset health on the Stellar network. It provides real-time analytics, automated alerts, and transparent reporting designed for developers, traders, and institutions operating within the Stellar ecosystem.
@@ -8,11 +13,9 @@ As institutional adoption accelerates and real-world assets continue to grow on 
 
 > Project Status: Early development -- contributions and feedback are welcome.
 
-
 ## Mission
 
 To provide the Stellar ecosystem with transparent, reliable, and open-source monitoring infrastructure that strengthens trust in cross-chain bridges and improves liquidity visibility across decentralized exchanges.
-
 
 ## Problem Statement
 
@@ -26,7 +29,6 @@ The Stellar network is experiencing rapid growth in bridged assets and tokenized
 
 Stellar Bridge Watch solves this by providing a unified monitoring and analytics layer purpose-built for Stellar.
 
-
 ## Vision
 
 To become the standard monitoring infrastructure for bridged assets on Stellar, enabling:
@@ -36,7 +38,6 @@ To become the standard monitoring infrastructure for bridged assets on Stellar, 
 - Aggregated liquidity intelligence across all major Stellar DEXs
 - A public foundation that developers and institutions can build on
 
-
 ## Target Users
 
 - DeFi developers building on Stellar and Soroban
@@ -45,7 +46,6 @@ To become the standard monitoring infrastructure for bridged assets on Stellar, 
 - Bridge operators requiring health and uptime monitoring
 - Compliance teams needing transparent audit trails
 - Open-source contributors interested in Stellar infrastructure
-
 
 ## Core Features
 
@@ -69,7 +69,6 @@ Composite health scores (0-100) for each monitored asset based on liquidity dept
 
 Daily, weekly, and monthly bridge volume statistics. Cross-chain flow visualization showing which assets are flowing in and out of Stellar. Institutional asset tracking covering Franklin Templeton FOBXX, Ondo USDY, Centrifuge tokens, and others. Export functionality supports custom report generation.
 
-
 ## Architecture
 
 The project is structured around five core layers:
@@ -91,7 +90,6 @@ The project is structured around five core layers:
 **Smart Contracts:** Soroban (Rust) for on-chain monitoring components, oracle integrations, and DeFi protocol interactions
 
 **Infrastructure:** Docker and Docker Compose for containerization, GitHub Actions for CI/CD
-
 
 ## Repository Structure
 
@@ -126,27 +124,38 @@ stellar-bridge-watch/
 └── LICENSE
 ```
 
-
 ## Quick Start
+
+### Automated Setup (Recommended)
 
 ```bash
 # Clone the repository
 git clone https://github.com/StellaBridge/Bridge-Watch.git
 cd Bridge-Watch
 
-# Install dependencies
-npm install
+# Run the setup script — handles everything
+./scripts/setup.sh
 
-# Configure environment variables
-cp .env.example .env
-
-# Start services with Docker Compose
-docker-compose up -d
-
-# Run the development server
-npm run dev
+# Start the full dev environment
+make dev
 ```
 
+The setup script checks prerequisites, installs dependencies, configures `.env`, starts Docker services (PostgreSQL + Redis), runs database migrations and seeds, builds Soroban contracts, and generates IDE configuration. Run `./scripts/setup.sh --help` for all options.
+
+See [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) for detailed setup documentation, manual steps, and troubleshooting.
+
+### Manual Setup
+
+```bash
+git clone https://github.com/StellaBridge/Bridge-Watch.git
+cd Bridge-Watch
+cp .env.example .env
+npm install
+docker compose -f docker-compose.dev.yml up -d postgres redis
+npm run migrate --workspace=backend
+npm run seed --workspace=backend
+make dev
+```
 
 ## API Endpoints (MVP)
 
@@ -161,6 +170,19 @@ GET  /api/v1/bridges/:bridge/stats     # Bridge-specific statistics
 WS   /api/v1/ws                        # WebSocket for real-time updates
 ```
 
+## Load Testing
+
+Bridge-Watch includes a k6-based load testing framework with scenario profiles for smoke, ramp-up, spike, and endurance testing.
+
+- Framework entry point: [load-tests/README.md](load-tests/README.md)
+- Methodology: [docs/load-testing-methodology.md](docs/load-testing-methodology.md)
+- Baselines: [docs/performance-baselines.md](docs/performance-baselines.md)
+
+Run a local smoke test (requires k6 installed):
+
+```bash
+npm run test:load
+```
 
 ## Roadmap
 
@@ -199,7 +221,6 @@ WS   /api/v1/ws                        # WebSocket for real-time updates
 - Custom alert rules and notification channels
 - Multi-chain expansion beyond Ethereum bridges
 
-
 ## Initial Asset Coverage
 
 **Phase 1 Priority:**
@@ -207,7 +228,6 @@ USDC (Circle), PYUSD (PayPal), EURC (Circle), XLM (Native), FOBXX (Franklin Temp
 
 **Phase 2 Expansion:**
 USDY (Ondo Finance), Centrifuge RWA tokens, Wormhole-bridged assets, additional stablecoins
-
 
 ## Expected Impact
 
@@ -219,7 +239,6 @@ When fully developed, Stellar Bridge Watch will:
 - Reduce the barrier to entry for developers who need reliable bridge and liquidity data
 - Serve as a public good and open foundation for the Stellar community
 
-
 ## Success Metrics
 
 - Monitor 20+ bridged assets within 6 months
@@ -229,7 +248,6 @@ When fully developed, Stellar Bridge Watch will:
 - 50+ active API users and integrations
 - Community contributions from 10+ developers
 - Featured in Stellar ecosystem documentation
-
 
 ## Contributing
 
@@ -245,16 +263,17 @@ Ways to contribute:
 
 Please review the contribution guidelines before submitting a pull request.
 
+## Clipboard Utilities
+
+The frontend clipboard API and usage examples are documented in `docs/copy-clipboard.md`.
 
 ## Maintainer Commitment
 
 This project is actively maintained with the goal of long-term ecosystem support. We are committed to clear documentation, responsive issue management, and a stable development process. Major decisions will be discussed openly and community input will be valued throughout the project lifecycle.
 
-
 ## License
 
 MIT License
-
 
 ## Community and Support
 

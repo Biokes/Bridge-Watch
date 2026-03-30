@@ -8,6 +8,17 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { SkeletonChart } from "./Skeleton";
+
+function stellarVarRgb(varName: string, fallbackRgb: string): string {
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    if (!raw) return fallbackRgb;
+    return `rgb(${raw})`;
+  } catch {
+    return fallbackRgb;
+  }
+}
 
 interface LiquidityDataPoint {
   dex: string;
@@ -27,28 +38,32 @@ export default function LiquidityDepthChart({
   data,
   isLoading,
 }: LiquidityDepthChartProps) {
+  const titleId = `liquidity-chart-title-${symbol}`;
+  const descId = `liquidity-chart-desc-${symbol}`;
+
   if (isLoading) {
     return (
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
+        <h3 id={titleId} className="text-lg font-semibold text-stellar-text-primary mb-4">
           {symbol} Liquidity Depth
         </h3>
-        <div className="h-64 flex items-center justify-center">
+        <div className="h-64 flex items-center justify-center" role="status" aria-live="polite">
           <span className="text-stellar-text-secondary">
-            Loading liquidity data...
+            Loading liquidity data…
           </span>
         </div>
       </div>
     );
+    return <SkeletonChart height={340} ariaLabel={`${symbol} liquidity chart loading`} />;
   }
 
   if (data.length === 0) {
     return (
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
+        <h3 id={titleId} className="text-lg font-semibold text-stellar-text-primary mb-4">
           {symbol} Liquidity Depth
         </h3>
-        <div className="h-64 flex items-center justify-center">
+        <div className="h-64 flex items-center justify-center" role="status" aria-live="polite">
           <span className="text-stellar-text-secondary">
             No liquidity data available
           </span>
@@ -58,29 +73,50 @@ export default function LiquidityDepthChart({
   }
 
   return (
-    <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        {symbol} Liquidity Depth by DEX
-      </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1E2340" />
-          <XAxis dataKey="dex" stroke="#8A8FA8" tick={{ fontSize: 12 }} />
-          <YAxis stroke="#8A8FA8" tick={{ fontSize: 12 }} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#141829",
-              border: "1px solid #1E2340",
-              borderRadius: "8px",
-              color: "#FFFFFF",
-            }}
-            formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
-          />
-          <Legend />
-          <Bar dataKey="bidDepth" name="Bid Depth" fill="#00D4AA" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="askDepth" name="Ask Depth" fill="#0057FF" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <figure
+      className="bg-stellar-card border border-stellar-border rounded-lg p-6"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
+    >
+      <figcaption>
+        <h3 id={titleId} className="text-lg font-semibold text-stellar-text-primary mb-1">
+          {symbol} Liquidity Depth by DEX
+        </h3>
+        <p id={descId} className="sr-only">
+          Bar chart showing bid and ask depth for {symbol} across decentralized exchanges.
+        </p>
+      </figcaption>
+      <div role="img" aria-label={`${symbol} liquidity depth chart`} className="mt-3">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke={stellarVarRgb("--stellar-border", "rgb(30 35 64)")}
+            />
+            <XAxis
+              dataKey="dex"
+              stroke={stellarVarRgb("--stellar-text-secondary", "rgb(138 143 168)")}
+              tick={{ fontSize: 12 }}
+            />
+            <YAxis
+              stroke={stellarVarRgb("--stellar-text-secondary", "rgb(138 143 168)")}
+              tick={{ fontSize: 12 }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: stellarVarRgb("--stellar-card", "rgb(20 24 41)"),
+                border: `1px solid ${stellarVarRgb("--stellar-border", "rgb(30 35 64)")}`,
+                borderRadius: "8px",
+                color: stellarVarRgb("--stellar-text-primary", "rgb(255 255 255)"),
+              }}
+              formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
+            />
+            <Legend />
+            <Bar dataKey="bidDepth" name="Bid Depth" fill="#00D4AA" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="askDepth" name="Ask Depth" fill="#0057FF" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
   );
 }

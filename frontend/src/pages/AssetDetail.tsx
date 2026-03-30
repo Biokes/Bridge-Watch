@@ -1,101 +1,183 @@
+import { Suspense } from "react";
+import type { CellContext } from "@tanstack/react-table";
 import { useParams } from "react-router-dom";
+import { DataTable } from "../components/DataTable";
+import type { DataTableColumnDef } from "../components/DataTable";
+import HealthScoreCard from "../components/HealthScoreCard";
+import LiquidityDepthChart from "../components/LiquidityDepthChart";
+import PriceChart from "../components/PriceChart";
+import { ErrorBoundary, LoadingSpinner } from "../components/Skeleton";
+import CopyButton from "../components/CopyButton";
 import { useAssetHealth } from "../hooks/useAssets";
 import { usePrices } from "../hooks/usePrices";
-import HealthScoreCard from "../components/HealthScoreCard";
-import PriceChart from "../components/PriceChart";
-import LiquidityDepthChart from "../components/LiquidityDepthChart";
+
+type PriceSourceRow = {
+  source: string;
+  price: number;
+  timestamp: string;
+};
 
 export default function AssetDetail() {
   const { symbol } = useParams<{ symbol: string }>();
   const { data: healthData } = useAssetHealth(symbol ?? "");
-  const { data: priceData, isLoading: priceLoading } = usePrices(symbol ?? "");
+  const { data: priceData } = usePrices(symbol ?? "");
+
+  const priceSourceRows: PriceSourceRow[] = (priceData?.sources ?? []) as PriceSourceRow[];
+
+  const priceSourceColumns: Array<DataTableColumnDef<PriceSourceRow>> = [
+    {
+      id: "source",
+      accessorKey: "source",
+      header: "Source",
+      filterType: "text",
+      cell: (ctx: CellContext<PriceSourceRow, unknown>) => {
+        const source = String(ctx.getValue());
+
+        return (
+          <span className="inline-flex items-center gap-2">
+            <span>{source}</span>
+            <CopyButton
+              value={source}
+              label="Copy"
+              copiedLabel="Copied"
+              failedLabel="Failed"
+              variant="inline"
+              ariaLabel={`Copy source for ${symbol}`}
+            />
+          </span>
+        );
+      },
+    },
+    {
+      id: "price",
+      accessorKey: "price",
+      header: "Price",
+      filterType: "numberRange",
+      cell: (ctx: CellContext<PriceSourceRow, unknown>) => {
+        const price = Number(ctx.getValue());
+
+        return (
+          <span className="inline-flex items-center gap-2">
+            <span>${price.toFixed(4)}</span>
+            <CopyButton
+              value={price}
+              label="Copy"
+              copiedLabel="Copied"
+              failedLabel="Failed"
+              variant="inline"
+              serialize={(value) => Number(value).toFixed(4)}
+              ariaLabel={`Copy price from ${ctx.row.original.source}`}
+            />
+          </span>
+        );
+      },
+    },
+    {
+      id: "timestamp",
+      accessorKey: "timestamp",
+      header: "Last Updated",
+      filterType: "text",
+      cell: (ctx: CellContext<PriceSourceRow, unknown>) => {
+        const timestamp = String(ctx.getValue());
+
+        return (
+          <span className="inline-flex items-center gap-2">
+            <span>{timestamp}</span>
+            <CopyButton
+              value={timestamp}
+              label="Copy"
+              copiedLabel="Copied"
+              failedLabel="Failed"
+              variant="inline"
+              ariaLabel={`Copy timestamp from ${ctx.row.original.source}`}
+            />
+          </span>
+        );
+      },
+    },
+    {
+      id: "copy-json",
+      header: "Copy JSON",
+      enableSorting: false,
+      enableColumnFilter: false,
+      cell: (ctx: CellContext<PriceSourceRow, unknown>) => (
+        <CopyButton
+          value={ctx.row.original}
+          label="JSON"
+          copiedLabel="Copied"
+          failedLabel="Failed"
+          variant="inline"
+          format="pretty-json"
+          mimeType="application/json"
+          ariaLabel={`Copy ${ctx.row.original.source} row as JSON`}
+        />
+      ),
+    },
+  ];
 
   if (!symbol) {
-    return (
-      <div className="text-stellar-text-secondary">
-        No asset symbol provided.
-      </div>
-    );
+    return <div className="text-stellar-text-secondary">No asset symbol provided.</div>;
   }
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-3xl font-bold text-white">{symbol}</h1>
-        <p className="mt-2 text-stellar-text-secondary">
-          Detailed monitoring for {symbol} on the Stellar network
-        </p>
-      </header>
+    <ErrorBoundary onRetry={() => window.location.reload()}>
+      <Suspense
+        fallback={
+          <LoadingSpinner
+            message={`Loading ${symbol} details...`}
+            progress={25}
+            className="max-w-lg mx-auto"
+          />
+        }
+      >
+        <div className="space-y-8">
+          <header>
+            <h1 className="text-3xl font-bold text-stellar-text-primary">{symbol}</h1>
+            <p className="mt-2 text-stellar-text-secondary">
+              Detailed monitoring for {symbol} on the Stellar network
+            </p>
+          </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <HealthScoreCard
-          symbol={symbol}
-          overallScore={healthData?.overallScore ?? null}
-          factors={healthData?.factors ?? null}
-          trend={healthData?.trend ?? null}
-        />
-        <div className="lg:col-span-2">
-          <PriceChart
-            symbol={symbol}
-            data={priceData?.history ?? []}
-            isLoading={priceLoading}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <HealthScoreCard
+              symbol={symbol}
+              overallScore={healthData?.overallScore ?? null}
+              factors={healthData?.factors ?? null}
+              trend={healthData?.trend ?? null}
+            />
+            <div className="lg:col-span-2">
+              <PriceChart symbol={symbol} />
+            </div>
+          </div>
+
+          <LiquidityDepthChart symbol={symbol} data={[]} isLoading={false} />
+
+          <DataTable
+            data={priceSourceRows}
+            columns={priceSourceColumns}
+            isLoading={!priceData}
+            title="Price Sources"
+            description={`Price sources for ${symbol} including last update times`}
+            pageSizeOptions={[10, 20, 50]}
+            filenameBase={`${symbol}-price-sources`}
+            enableRowSelection={true}
+            enableMultiSort={true}
+            enableColumnReorder={true}
+            enableVirtualization={true}
+            rowActions={{
+              items: [
+                {
+                  id: "copy-source",
+                  label: "Copy source",
+                  onSelect: (row) => {
+                    void navigator.clipboard.writeText(row.source);
+                  },
+                },
+              ],
+            }}
           />
         </div>
-      </div>
-
-      <LiquidityDepthChart symbol={symbol} data={[]} isLoading={false} />
-
-      <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
-          Price Sources
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-stellar-text-secondary border-b border-stellar-border">
-                <th className="pb-3 pr-4">Source</th>
-                <th className="pb-3 pr-4">Price</th>
-                <th className="pb-3 pr-4">Last Updated</th>
-                <th className="pb-3">Deviation</th>
-              </tr>
-            </thead>
-            <tbody className="text-white">
-              {priceData?.sources && priceData.sources.length > 0 ? (
-                priceData.sources.map(
-                  (source: {
-                    source: string;
-                    price: number;
-                    timestamp: string;
-                  }) => (
-                    <tr
-                      key={source.source}
-                      className="border-b border-stellar-border"
-                    >
-                      <td className="py-3 pr-4">{source.source}</td>
-                      <td className="py-3 pr-4">
-                        ${source.price.toFixed(4)}
-                      </td>
-                      <td className="py-3 pr-4 text-stellar-text-secondary">
-                        {source.timestamp}
-                      </td>
-                      <td className="py-3">--</td>
-                    </tr>
-                  )
-                )
-              ) : (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="py-6 text-center text-stellar-text-secondary"
-                  >
-                    No price source data available
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      </Suspense>
+    </ErrorBoundary>
   );
 }

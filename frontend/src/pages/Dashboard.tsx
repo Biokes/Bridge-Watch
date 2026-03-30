@@ -1,12 +1,17 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useAssetsWithHealth, useHealthUpdater } from "../hooks/useAssets";
 import { useBridges } from "../hooks/useBridges";
 import { useWebSocket } from "../hooks/useWebSocket";
-import HealthScoreCard, {
-  HealthScoreCardSkeleton,
-} from "../components/HealthScoreCard";
+import HealthScoreCard from "../components/HealthScoreCard";
 import BridgeStatusCard from "../components/BridgeStatusCard";
+import { QuickStatsWidget } from "../components/QuickStats";
+import OnboardingDialog from "../components/OnboardingDialog";
+import {
+  SkeletonCard,
+  ErrorBoundary,
+} from "../components/Skeleton";
+import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import type {
   AssetWithHealth,
   SortField,
@@ -64,6 +69,12 @@ export default function Dashboard() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
 
+  const [onboardingCompleted, setOnboardingCompleted] = useLocalStorageState(
+    "bridge-watch:onboarding:v1",
+    false
+  );
+  const [onboardingOpen, setOnboardingOpen] = useState(!onboardingCompleted);
+
   const handleHealthUpdate = useCallback(
     (data: unknown) => {
       const healthData = data as { channel: string } & HealthScore;
@@ -98,16 +109,49 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+      <OnboardingDialog
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onComplete={() => {
+          setOnboardingCompleted(true);
+          setOnboardingOpen(false);
+        }}
+      />
+
       <header>
-        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-stellar-text-primary">Dashboard</h1>
         <p className="mt-2 text-stellar-text-secondary">
           Real-time monitoring of bridged assets on the Stellar network
         </p>
+        {!onboardingOpen && !onboardingCompleted && (
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="mt-4 text-sm text-stellar-blue hover:underline focus:outline-none focus:ring-2 focus:ring-stellar-blue rounded-md px-2 py-1"
+          >
+            Continue onboarding
+          </button>
+        )}
+        {onboardingCompleted && (
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="mt-4 text-sm text-stellar-text-secondary hover:text-stellar-text-primary focus:outline-none focus:ring-2 focus:ring-stellar-blue rounded-md px-2 py-1"
+          >
+            Show onboarding
+          </button>
+        )}
       </header>
+
+      <QuickStatsWidget
+        assets={assetsData ?? []}
+        bridges={bridgesData?.bridges ?? []}
+        isLoading={assetsLoading || bridgesLoading}
+      />
 
       <section aria-labelledby="asset-health-heading">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-          <h2 id="asset-health-heading" className="text-xl font-semibold text-white">
+          <h2 id="asset-health-heading" className="text-xl font-semibold text-stellar-text-primary">
             Asset Health
           </h2>
 
@@ -120,7 +164,7 @@ export default function Dashboard() {
                 id="filter-status"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
-                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-stellar-text-primary focus:outline-none focus:ring-2 focus:ring-stellar-blue"
               >
                 <option value="all">All Assets</option>
                 <option value="healthy">Healthy ({statusCounts.healthy})</option>
@@ -137,7 +181,7 @@ export default function Dashboard() {
                 id="sort-field"
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value as SortField)}
-                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-stellar-text-primary focus:outline-none focus:ring-2 focus:ring-stellar-blue"
               >
                 <option value="score">Sort by Score</option>
                 <option value="symbol">Sort by Name</option>
@@ -146,7 +190,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setSortOrder((o) => (o === "asc" ? "desc" : "asc"))}
-                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-white hover:bg-stellar-border focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                className="bg-stellar-card border border-stellar-border rounded-lg px-3 py-2 text-sm text-stellar-text-primary hover:bg-stellar-border focus:outline-none focus:ring-2 focus:ring-stellar-blue"
                 aria-label={`Sort ${sortOrder === "asc" ? "descending" : "ascending"}`}
               >
                 {sortOrder === "asc" ? "↑" : "↓"}
@@ -155,23 +199,40 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {assetsError ? (
-          <div
-            className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center"
-            role="alert"
+        <ErrorBoundary onRetry={() => window.location.reload()}>
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <SkeletonCard key={i} rows={4} ariaLabel={`Loading asset ${i}`} />
+                ))}
+              </div>
+            }
           >
-            <p className="text-red-400 font-medium">Failed to load asset data</p>
-            <p className="text-sm text-red-400/80 mt-1">
-              Please check your connection and try again.
-            </p>
-          </div>
-        ) : assetsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <HealthScoreCardSkeleton key={i} symbol={`Asset ${i}`} />
-            ))}
-          </div>
-        ) : processedAssets.length > 0 ? (
+            {assetsError ? (
+              <div
+                className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center"
+                role="alert"
+              >
+                <p className="text-red-400 font-medium">Failed to load asset data</p>
+                <p className="text-sm text-red-400/80 mt-1">
+                  Please check your connection and try again.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-3 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-400"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : assetsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <SkeletonCard key={i} rows={5} ariaLabel={`Loading asset ${i}`} />
+                ))}
+              </div>
+            ) : processedAssets.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {processedAssets.map((asset) => (
               <Link
@@ -210,11 +271,13 @@ export default function Dashboard() {
             </p>
           </div>
         )}
+      </Suspense>
+    </ErrorBoundary>
       </section>
 
       <section aria-labelledby="bridge-status-heading">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="bridge-status-heading" className="text-xl font-semibold text-white">
+          <h2 id="bridge-status-heading" className="text-xl font-semibold text-stellar-text-primary">
             Bridge Status
           </h2>
           <Link
@@ -224,23 +287,23 @@ export default function Dashboard() {
             View all
           </Link>
         </div>
-        {bridgesLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="bg-stellar-card border border-stellar-border rounded-lg p-6"
-              >
-                <div className="h-6 w-32 bg-stellar-border rounded animate-pulse mb-4" />
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map((j) => (
-                    <div key={j} className="h-4 bg-stellar-border rounded animate-pulse" />
-                  ))}
-                </div>
+        <ErrorBoundary onRetry={() => window.location.reload()}>
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <SkeletonCard key={i} rows={5} ariaLabel={`Loading bridge ${i}`} />
+                ))}
               </div>
-            ))}
-          </div>
-        ) : bridgesData && bridgesData.bridges.length > 0 ? (
+            }
+          >
+            {bridgesLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => (
+                  <SkeletonCard key={i} rows={5} ariaLabel={`Loading bridge ${i}`} />
+                ))}
+              </div>
+            ) : bridgesData && bridgesData.bridges.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {bridgesData.bridges.map(
               (bridge: {
@@ -262,6 +325,8 @@ export default function Dashboard() {
             </p>
           </div>
         )}
+      </Suspense>
+    </ErrorBoundary>
       </section>
     </div>
   );
