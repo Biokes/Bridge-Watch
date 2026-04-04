@@ -20,15 +20,52 @@ function RowActionsMenu<TData>({
   rowActions: DataTableRowAction<TData>;
 }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const firstItemRef = useRef<HTMLButtonElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = window.setTimeout(() => firstItemRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onMouseDown(e: MouseEvent) {
+      const el = containerRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setOpen(false);
+          buttonRef.current?.focus();
+        }
+      }}
+    >
       <button
         type="button"
         className="px-2 py-1 rounded border border-stellar-border text-white"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={rowActions.label ?? "Row actions"}
         onClick={() => setOpen((v) => !v)}
+        ref={buttonRef}
       >
         ⋯
       </button>
@@ -44,9 +81,11 @@ function RowActionsMenu<TData>({
               role="menuitem"
               className="w-full text-left px-3 py-2 text-sm text-white hover:bg-stellar-dark disabled:opacity-40"
               disabled={item.disabled}
+              ref={item.id === (rowActions.items?.[0]?.id ?? "") ? firstItemRef : undefined}
               onClick={() => {
                 item.onSelect(row.original);
                 setOpen(false);
+                buttonRef.current?.focus();
               }}
             >
               {item.label}
