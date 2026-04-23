@@ -39,9 +39,8 @@ load-tests/results/*.log
 # Docker
 docker-compose.override.yml
 
-# Rust / Soroban (workspace root: contracts/)
-contracts/target/
-# Ephemeral snapshot output from local `cargo test` (do not bulk-commit)
+# Rust / Soroban
+**/target/
 contracts/soroban/test_snapshots/
 
 # Editor-specific
