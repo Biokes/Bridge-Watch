@@ -174,6 +174,61 @@ export function getAssetAlerts(symbol: string) {
   }>>(`/assets/${symbol}/alerts`);
 }
 
+export interface AlertSuppressionRule {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  maintenanceMode: boolean;
+  expiresAt: string | null;
+}
+
+export function getSuppressionRules(includeExpired = false) {
+  return fetchApi<{ rules: AlertSuppressionRule[] }>(
+    `/alert-suppression/rules?includeExpired=${includeExpired ? "true" : "false"}`
+  );
+}
+
+export function toggleSuppressionRule(id: string, payload: { actor: string; isActive: boolean }) {
+  return fetchApi<{ rule: AlertSuppressionRule }>(`/alert-suppression/rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createMaintenanceOverride(payload: {
+  actor: string;
+  startAt: string;
+  endAt: string;
+  description?: string;
+  sources?: string[];
+  assetCodes?: string[];
+}) {
+  return fetchApi<{ rule: AlertSuppressionRule }>("/alert-suppression/maintenance/override", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function previewSuppression(payload: {
+  actor: string;
+  assetCode: string;
+  source: string;
+  alertType: "price_deviation" | "supply_mismatch" | "bridge_downtime" | "health_score_drop" | "volume_anomaly" | "reserve_ratio_breach";
+  priority: "critical" | "high" | "medium" | "low";
+}) {
+  return fetchApi<{
+    decision: {
+      suppressed: boolean;
+      matchedRule: { id: string; name: string } | null;
+      reason: string | null;
+    };
+  }>("/alert-suppression/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // Bridges
 export function getBridges() {
   return fetchApi<{ bridges: Bridge[] }>("/bridges");
