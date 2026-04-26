@@ -105,6 +105,9 @@ mod keys {
     pub const ADMIN_ACTIVITY_CTR: &str = "admin_activity_ctr";
     // Multi-Source Health Submission (issue #300)
     pub const HEALTH_SOURCES: &str = "health_sources";
+    // Event Replay Helpers (issue #296)
+    pub const EVENT_REPLAY_LOG: &str = "event_replay_log";
+    pub const EVENT_REPLAY_CTR: &str = "event_replay_ctr";
 }
 
 #[contracttype]
@@ -947,6 +950,52 @@ pub struct AllConfigsExport {
 }
 
 // ---------------------------------------------------------------------------
+// Event Replay Helper types (issue #296)
+// ---------------------------------------------------------------------------
+
+/// Schema version for EventReplayEntry. Increment when the struct layout changes
+/// so off-chain consumers can detect and handle schema migrations.
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
+
+/// A replay-friendly record of a contract event.
+///
+/// Every entry carries a stable `schema_version` so off-chain replay tools can
+/// detect layout changes. The `ordering_key` is `(timestamp << 32) | sequence`
+/// and provides deterministic ordering even when two events share a timestamp.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventReplayEntry {
+    /// Monotonically-increasing sequence number (starts at 1).
+    pub event_id: u32,
+    /// Short label identifying the event kind (e.g. "health_up", "em_pause").
+    pub event_type: String,
+    /// Address that triggered the event.
+    pub actor: Address,
+    /// Primary subject of the event (asset code, source_id, etc.).
+    pub subject: String,
+    /// Numeric payload (score, price, flag, etc.; 0 if not applicable).
+    pub value: i128,
+    /// Ledger timestamp when the event was emitted.
+    pub timestamp: u64,
+    /// `(timestamp << 32) | sequence` — stable total order for replay.
+    pub ordering_key: u64,
+    /// Schema version at the time this entry was written.
+    pub schema_version: u32,
+}
+
+/// Paginated result returned by `get_replay_events`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventReplayPage {
+    /// Entries for the requested window.
+    pub entries: Vec<EventReplayEntry>,
+    /// Total entries in the log (not just this page).
+    pub total: u32,
+    /// Schema version of entries in this page.
+    pub schema_version: u32,
+}
+
+// ---------------------------------------------------------------------------
 // Multi-Source Health Submission types (issue #300)
 // ---------------------------------------------------------------------------
 
@@ -1171,7 +1220,14 @@ impl BridgeWatchContract {
             .set(&AssetDataKey::Health(asset_code.clone()), &record);
 
         env.events()
-            .publish((symbol_short!("health_up"), asset_code), health_score);
+            .publish((symbol_short!("health_up"), asset_code.clone()), health_score);
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "health_up"),
+            caller.clone(),
+            asset_code,
+            health_score as i128,
+        );
         Self::maybe_create_auto_checkpoint(&env, &caller);
     }
 
@@ -7378,6 +7434,13 @@ impl BridgeWatchContract {
             .set(&keys::RECOVERY_STEPS, &steps);
         env.events()
             .publish((symbol_short!("rec_entr"), caller.clone()), (reason.clone(), now));
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "rec_entr"),
+            caller.clone(),
+            reason.clone(),
+            0,
+        );
         Self::append_admin_activity(&env, AdminActivityAction::RecoveryEntered, caller, reason);
     }
 
@@ -7759,7 +7822,14 @@ impl BridgeWatchContract {
             .set(&HealthSourceDataKey::Entry(source_id.clone(), asset_code.clone()), &entry);
         env.events().publish(
             (symbol_short!("ms_hlth"), caller.clone(), asset_code.clone()),
-            (source_id, health_score, now),
+            (source_id.clone(), health_score, now),
+        );
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "ms_hlth"),
+            caller.clone(),
+            asset_code.clone(),
+            health_score as i128,
         );
         Self::append_admin_activity(
             &env,
@@ -7825,6 +7895,109 @@ impl BridgeWatchContract {
             .instance()
             .get(&keys::HEALTH_SOURCES)
             .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // -----------------------------------------------------------------------
+    // Event Replay Helpers (issue #296)
+    // -----------------------------------------------------------------------
+
+    /// Return the current event payload schema version.
+    ///
+    /// Off-chain consumers should call this after connecting to detect whether
+    /// a schema migration has occurred and rebuild their replay state if needed.
+    pub fn get_replay_schema_version(_env: Env) -> u32 {
+        EVENT_SCHEMA_VERSION
+    }
+
+    /// Query replay-friendly event history ordered by ascending `ordering_key`.
+    ///
+    /// Returns up to `limit` entries whose `ordering_key` is ≥
+    /// `from_ordering_key`. Pass `0` to start from the beginning of the log.
+    /// Maximum `limit` per call is 100. The returned `EventReplayPage` includes
+    /// the total log size so callers can implement cursor-based pagination.
+    pub fn get_replay_events(env: Env, from_ordering_key: u64, limit: u32) -> EventReplayPage {
+        if limit > 100 {
+            panic!("limit must not exceed 100");
+        }
+        let log: Vec<EventReplayEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::EVENT_REPLAY_LOG)
+            .unwrap_or_else(|| Vec::new(&env));
+        let total = log.len();
+        let mut page: Vec<EventReplayEntry> = Vec::new(&env);
+        for i in 0..total {
+            if page.len() >= limit {
+                break;
+            }
+            let entry = log.get(i).unwrap();
+            if entry.ordering_key >= from_ordering_key {
+                page.push_back(entry);
+            }
+        }
+        EventReplayPage {
+            entries: page,
+            total,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+    }
+
+    /// Return the total number of entries in the event replay log.
+    pub fn get_replay_log_size(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get::<_, Vec<EventReplayEntry>>(&keys::EVENT_REPLAY_LOG)
+            .map(|v| v.len())
+            .unwrap_or(0)
+    }
+
+    /// Internal: append one entry to the event replay log.
+    ///
+    /// The `ordering_key` is `(timestamp << 32) | (sequence & 0xFFFF_FFFF)`
+    /// providing stable, deterministic ordering even for same-timestamp events.
+    /// Log is capped at 1 000 entries; oldest entries are trimmed on overflow.
+    fn append_replay_event(
+        env: &Env,
+        event_type: String,
+        actor: Address,
+        subject: String,
+        value: i128,
+    ) {
+        let seq: u32 = env
+            .storage()
+            .instance()
+            .get(&keys::EVENT_REPLAY_CTR)
+            .unwrap_or(0u32)
+            + 1;
+        env.storage().instance().set(&keys::EVENT_REPLAY_CTR, &seq);
+        let now = env.ledger().timestamp();
+        let ordering_key = (now << 32) | (seq as u64);
+        let entry = EventReplayEntry {
+            event_id: seq,
+            event_type,
+            actor,
+            subject,
+            value,
+            timestamp: now,
+            ordering_key,
+            schema_version: EVENT_SCHEMA_VERSION,
+        };
+        let mut log: Vec<EventReplayEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::EVENT_REPLAY_LOG)
+            .unwrap_or_else(|| Vec::new(env));
+        log.push_back(entry);
+        if log.len() > 1000 {
+            let mut trimmed: Vec<EventReplayEntry> = Vec::new(env);
+            for i in 1..log.len() {
+                trimmed.push_back(log.get(i).unwrap());
+            }
+            log = trimmed;
+        }
+        env.storage()
+            .persistent()
+            .set(&keys::EVENT_REPLAY_LOG, &log);
     }
 }
 
@@ -11726,5 +11899,102 @@ mod tests {
         client.submit_health_multi_source(&admin, &src, &asset, &80, &80, &80, &80);
         let events = env.events().all();
         assert!(!events.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Event Replay Helper tests (issue #296)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_get_replay_schema_version_returns_constant() {
+        let (_, client, _) = setup();
+        assert_eq!(client.get_replay_schema_version(), EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_replay_log_size_zero_initially() {
+        let (_, client, _) = setup();
+        assert_eq!(client.get_replay_log_size(), 0);
+    }
+
+    #[test]
+    fn test_submit_health_appends_replay_entry() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &85, &80, &75, &90);
+        assert_eq!(client.get_replay_log_size(), 1);
+    }
+
+    #[test]
+    fn test_replay_entry_has_correct_event_type() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &85, &80, &75, &90);
+        let page = client.get_replay_events(&0, &10);
+        assert_eq!(page.total, 1);
+        let entry = page.entries.get(0).unwrap();
+        assert_eq!(entry.event_type, String::from_str(&env, "health_up"));
+        assert_eq!(entry.value, 85);
+        assert_eq!(entry.schema_version, EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_replay_entry_ordering_key_monotone() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        client.submit_health(&admin, &asset, &70, &70, &70, &70);
+        let page = client.get_replay_events(&0, &10);
+        assert_eq!(page.total, 2);
+        let first = page.entries.get(0).unwrap();
+        let second = page.entries.get(1).unwrap();
+        assert!(second.ordering_key > first.ordering_key);
+        assert!(second.event_id > first.event_id);
+    }
+
+    #[test]
+    fn test_get_replay_events_from_ordering_key_filters() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        client.submit_health(&admin, &asset, &70, &70, &70, &70);
+        // Use the ordering_key of the second entry to fetch only from there
+        let all = client.get_replay_events(&0, &10);
+        let second_key = all.entries.get(1).unwrap().ordering_key;
+        let filtered = client.get_replay_events(&second_key, &10);
+        assert_eq!(filtered.entries.len(), 1);
+        assert_eq!(filtered.entries.get(0).unwrap().value, 70);
+    }
+
+    #[test]
+    fn test_replay_page_includes_schema_version() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        let page = client.get_replay_events(&0, &1);
+        assert_eq!(page.schema_version, EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    #[should_panic(expected = "limit must not exceed 100")]
+    fn test_get_replay_events_limit_exceeds_max_panics() {
+        let (_, client, _) = setup();
+        client.get_replay_events(&0, &101);
+    }
+
+    #[test]
+    fn test_recovery_enter_appends_replay_entry() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        assert_eq!(client.get_replay_log_size(), 1);
+        let page = client.get_replay_events(&0, &10);
+        let entry = page.entries.get(0).unwrap();
+        assert_eq!(entry.event_type, String::from_str(&env, "rec_entr"));
+        assert_eq!(entry.actor, admin);
     }
 }
