@@ -94,6 +94,20 @@ mod keys {
     pub const ASSET_STATISTICS: &str = "asset_statistics";
     pub const EXPIRATIONPOLICY: &str = "expiration_policy";
     pub const CLEANUPSTATS: &str = "cleanup_stats";
+    // Emergency Recovery (issue #298)
+    pub const RECOVERY_MODE: &str = "recovery_mode";
+    pub const RECOVERY_STEPS: &str = "recovery_steps";
+    pub const RECOVERY_REASON: &str = "recovery_reason";
+    pub const RECOVERY_ENTERED_AT: &str = "recovery_entered_at";
+    pub const RECOVERY_ENTERED_BY: &str = "recovery_entered_by";
+    // Admin Activity Service (issue #299)
+    pub const ADMIN_ACTIVITY_LOG: &str = "admin_activity_log";
+    pub const ADMIN_ACTIVITY_CTR: &str = "admin_activity_ctr";
+    // Multi-Source Health Submission (issue #300)
+    pub const HEALTH_SOURCES: &str = "health_sources";
+    // Event Replay Helpers (issue #296)
+    pub const EVENT_REPLAY_LOG: &str = "event_replay_log";
+    pub const EVENT_REPLAY_CTR: &str = "event_replay_ctr";
 }
 
 #[contracttype]
@@ -935,6 +949,193 @@ pub struct AllConfigsExport {
     pub exported_at: u64,
 }
 
+// ---------------------------------------------------------------------------
+// Event Replay Helper types (issue #296)
+// ---------------------------------------------------------------------------
+
+/// Schema version for EventReplayEntry. Increment when the struct layout changes
+/// so off-chain consumers can detect and handle schema migrations.
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
+
+/// A replay-friendly record of a contract event.
+///
+/// Every entry carries a stable `schema_version` so off-chain replay tools can
+/// detect layout changes. The `ordering_key` is `(timestamp << 32) | sequence`
+/// and provides deterministic ordering even when two events share a timestamp.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventReplayEntry {
+    /// Monotonically-increasing sequence number (starts at 1).
+    pub event_id: u32,
+    /// Short label identifying the event kind (e.g. "health_up", "em_pause").
+    pub event_type: String,
+    /// Address that triggered the event.
+    pub actor: Address,
+    /// Primary subject of the event (asset code, source_id, etc.).
+    pub subject: String,
+    /// Numeric payload (score, price, flag, etc.; 0 if not applicable).
+    pub value: i128,
+    /// Ledger timestamp when the event was emitted.
+    pub timestamp: u64,
+    /// `(timestamp << 32) | sequence` — stable total order for replay.
+    pub ordering_key: u64,
+    /// Schema version at the time this entry was written.
+    pub schema_version: u32,
+}
+
+/// Paginated result returned by `get_replay_events`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EventReplayPage {
+    /// Entries for the requested window.
+    pub entries: Vec<EventReplayEntry>,
+    /// Total entries in the log (not just this page).
+    pub total: u32,
+    /// Schema version of entries in this page.
+    pub schema_version: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Source Health Submission types (issue #300)
+// ---------------------------------------------------------------------------
+
+/// A trusted source that may submit health data via `submit_health_multi_source`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HealthSource {
+    /// Unique identifier for this source (e.g., "oracle-1", "bridge-node-a").
+    pub source_id: String,
+    /// Relative weight in basis points (10 000 = 100 %). Used in aggregation.
+    pub weight_bps: u32,
+    /// Whether this source is currently trusted to submit data.
+    pub trusted: bool,
+    /// Ledger timestamp when the source was registered.
+    pub registered_at: u64,
+}
+
+/// A per-source health data point stored for a specific asset.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourcedHealthEntry {
+    /// Source that submitted this entry.
+    pub source_id: String,
+    /// Asset this entry applies to.
+    pub asset_code: String,
+    pub health_score: u32,
+    pub liquidity_score: u32,
+    pub price_stability_score: u32,
+    pub bridge_uptime_score: u32,
+    /// Ledger timestamp of submission.
+    pub submitted_at: u64,
+}
+
+/// Weighted aggregation of all trusted source submissions for one asset.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AggregatedHealth {
+    pub asset_code: String,
+    /// Weighted-average health score across all contributing sources.
+    pub weighted_health_score: u32,
+    /// Weighted-average liquidity score.
+    pub weighted_liquidity_score: u32,
+    /// Weighted-average price stability score.
+    pub weighted_price_stability_score: u32,
+    /// Weighted-average bridge uptime score.
+    pub weighted_bridge_uptime_score: u32,
+    /// Number of trusted sources that contributed.
+    pub source_count: u32,
+    /// Ledger timestamp when this aggregation was computed.
+    pub computed_at: u64,
+}
+
+/// Storage key for per-source health entries (source_id → SourcedHealthEntry list).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HealthSourceDataKey {
+    /// Sourced entry for (source_id, asset_code).
+    Entry(String, String),
+}
+
+// ---------------------------------------------------------------------------
+// Admin Activity Service types (issue #299)
+// ---------------------------------------------------------------------------
+
+/// Categories of admin actions captured by the activity log.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AdminActivityAction {
+    HealthSubmitted,
+    PriceSubmitted,
+    AssetRegistered,
+    RoleGranted,
+    RoleRevoked,
+    ContractPaused,
+    ContractUnpaused,
+    ConfigUpdated,
+    RecoveryEntered,
+    RecoveryExited,
+}
+
+/// A single entry in the on-chain admin activity log.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActivityEntry {
+    /// Monotonically-increasing sequence number (starts at 1).
+    pub sequence: u32,
+    /// Category of action taken.
+    pub action: AdminActivityAction,
+    /// Address that performed the action.
+    pub actor: Address,
+    /// Human-readable context (asset code, role name, reason, etc.).
+    pub detail: String,
+    /// Ledger timestamp when the action was recorded.
+    pub timestamp: u64,
+}
+
+/// Paginated result returned by `get_admin_activity`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActivityPage {
+    /// Entries for the requested page.
+    pub entries: Vec<AdminActivityEntry>,
+    /// Total entries in the log (not just this page).
+    pub total: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Emergency Recovery types (issue #298)
+// ---------------------------------------------------------------------------
+
+/// A single step recorded during an active emergency recovery sequence.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryStep {
+    /// Human-readable description of the action taken.
+    pub description: String,
+    /// Always `true` — steps are only written when completed.
+    pub completed: bool,
+    /// Ledger timestamp when this step was recorded.
+    pub recorded_at: u64,
+    /// Address that recorded the step.
+    pub actor: Address,
+}
+
+/// Summary of the current emergency recovery state.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryState {
+    /// Whether recovery mode is currently active.
+    pub active: bool,
+    /// Human-readable reason passed to `enter_recovery_mode`.
+    pub reason: String,
+    /// Ledger timestamp when recovery mode was entered.
+    pub entered_at: u64,
+    /// Address that activated recovery mode.
+    pub entered_by: Address,
+    /// Number of recovery steps logged so far.
+    pub step_count: u32,
+}
+
 #[contract]
 pub struct BridgeWatchContract;
 
@@ -1019,7 +1220,14 @@ impl BridgeWatchContract {
             .set(&AssetDataKey::Health(asset_code.clone()), &record);
 
         env.events()
-            .publish((symbol_short!("health_up"), asset_code), health_score);
+            .publish((symbol_short!("health_up"), asset_code.clone()), health_score);
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "health_up"),
+            caller.clone(),
+            asset_code,
+            health_score as i128,
+        );
         Self::maybe_create_auto_checkpoint(&env, &caller);
     }
 
@@ -3063,7 +3271,8 @@ impl BridgeWatchContract {
             .set(&keys::PAUSE_HISTORY, &history);
 
         env.events()
-            .publish((symbol_short!("em_pause"), caller), reason);
+            .publish((symbol_short!("em_pause"), caller.clone()), reason.clone());
+        Self::append_admin_activity(&env, AdminActivityAction::ContractPaused, caller, reason);
     }
 
     /// Lift the global pause after the timelock has elapsed.
@@ -3112,7 +3321,8 @@ impl BridgeWatchContract {
             .set(&keys::PAUSE_HISTORY, &history);
 
         env.events()
-            .publish((symbol_short!("em_unpaus"), caller), reason);
+            .publish((symbol_short!("em_unpaus"), caller.clone()), reason.clone());
+        Self::append_admin_activity(&env, AdminActivityAction::ContractUnpaused, caller, reason);
     }
 
     /// Designate a dedicated pause guardian address.
@@ -7180,6 +7390,615 @@ impl BridgeWatchContract {
             13. trigger_periodic_stats() - Trigger batch computation",
         )
     }
+
+    // -----------------------------------------------------------------------
+    // Emergency Recovery (issue #298)
+    // -----------------------------------------------------------------------
+
+    /// Enter emergency recovery mode.
+    ///
+    /// Signals that the contract is in a degraded state and operators must
+    /// follow a manual recovery runbook. Only the contract admin may activate
+    /// recovery. The reason is stored on-chain for the audit trail.
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - Recovery mode is already active.
+    pub fn enter_recovery_mode(env: Env, caller: Address, reason: String) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can enter recovery mode");
+        }
+        if env
+            .storage()
+            .instance()
+            .get::<_, bool>(&keys::RECOVERY_MODE)
+            .unwrap_or(false)
+        {
+            panic!("recovery mode already active");
+        }
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&keys::RECOVERY_MODE, &true);
+        env.storage().instance().set(&keys::RECOVERY_REASON, &reason);
+        env.storage()
+            .instance()
+            .set(&keys::RECOVERY_ENTERED_AT, &now);
+        env.storage()
+            .instance()
+            .set(&keys::RECOVERY_ENTERED_BY, &caller);
+        // Reset step log for this recovery session
+        let steps: Vec<RecoveryStep> = Vec::new(&env);
+        env.storage()
+            .persistent()
+            .set(&keys::RECOVERY_STEPS, &steps);
+        env.events()
+            .publish((symbol_short!("rec_entr"), caller.clone()), (reason.clone(), now));
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "rec_entr"),
+            caller.clone(),
+            reason.clone(),
+            0,
+        );
+        Self::append_admin_activity(&env, AdminActivityAction::RecoveryEntered, caller, reason);
+    }
+
+    /// Exit emergency recovery mode, returning the contract to normal operation.
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - Recovery mode is not currently active.
+    pub fn exit_recovery_mode(env: Env, caller: Address) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can exit recovery mode");
+        }
+        if !env
+            .storage()
+            .instance()
+            .get::<_, bool>(&keys::RECOVERY_MODE)
+            .unwrap_or(false)
+        {
+            panic!("recovery mode is not active");
+        }
+        let now = env.ledger().timestamp();
+        env.storage().instance().set(&keys::RECOVERY_MODE, &false);
+        env.events()
+            .publish((symbol_short!("rec_exit"), caller.clone()), now);
+        Self::append_admin_activity(
+            &env,
+            AdminActivityAction::RecoveryExited,
+            caller,
+            String::from_str(&env, "recovery mode ended"),
+        );
+    }
+
+    /// Append a completed recovery step to the on-chain audit trail.
+    ///
+    /// Steps are immutable once written and serve as an ordered record of
+    /// actions taken during the recovery session. Capped at 50 steps per
+    /// session (reset when recovery mode is re-entered).
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - Recovery mode is not currently active.
+    /// - The step log is already at 50 entries.
+    pub fn record_recovery_step(env: Env, caller: Address, description: String) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can record recovery steps");
+        }
+        if !env
+            .storage()
+            .instance()
+            .get::<_, bool>(&keys::RECOVERY_MODE)
+            .unwrap_or(false)
+        {
+            panic!("recovery mode is not active");
+        }
+        let mut steps: Vec<RecoveryStep> = env
+            .storage()
+            .persistent()
+            .get(&keys::RECOVERY_STEPS)
+            .unwrap_or_else(|| Vec::new(&env));
+        if steps.len() >= 50 {
+            panic!("recovery step log is full (max 50)");
+        }
+        let step = RecoveryStep {
+            description,
+            completed: true,
+            recorded_at: env.ledger().timestamp(),
+            actor: caller,
+        };
+        steps.push_back(step);
+        env.storage()
+            .persistent()
+            .set(&keys::RECOVERY_STEPS, &steps);
+    }
+
+    /// Return a summary of the current recovery state.
+    ///
+    /// When recovery is not active, `active` is `false` and the `reason`,
+    /// `entered_at`, and `entered_by` fields reflect the last recovery session
+    /// (or zero-values if recovery has never been used).
+    pub fn get_recovery_state(env: Env) -> RecoveryState {
+        let active = env
+            .storage()
+            .instance()
+            .get::<_, bool>(&keys::RECOVERY_MODE)
+            .unwrap_or(false);
+        let steps: Vec<RecoveryStep> = env
+            .storage()
+            .persistent()
+            .get(&keys::RECOVERY_STEPS)
+            .unwrap_or_else(|| Vec::new(&env));
+        let reason: String = env
+            .storage()
+            .instance()
+            .get(&keys::RECOVERY_REASON)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+        let entered_at: u64 = env
+            .storage()
+            .instance()
+            .get(&keys::RECOVERY_ENTERED_AT)
+            .unwrap_or(0);
+        let entered_by: Address = env
+            .storage()
+            .instance()
+            .get(&keys::RECOVERY_ENTERED_BY)
+            .unwrap_or_else(|| env.current_contract_address());
+        RecoveryState {
+            active,
+            reason,
+            entered_at,
+            entered_by,
+            step_count: steps.len(),
+        }
+    }
+
+    /// Return the ordered list of recovery steps recorded in the current session.
+    pub fn get_recovery_steps(env: Env) -> Vec<RecoveryStep> {
+        env.storage()
+            .persistent()
+            .get(&keys::RECOVERY_STEPS)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin Activity Service (issue #299)
+    // -----------------------------------------------------------------------
+
+    /// Retrieve a page of admin activity log entries (oldest-first).
+    ///
+    /// Returns up to `limit` entries starting at zero-indexed `offset`.
+    /// Maximum `limit` per call is 50.
+    pub fn get_admin_activity(env: Env, limit: u32, offset: u32) -> AdminActivityPage {
+        if limit > 50 {
+            panic!("limit must not exceed 50");
+        }
+        let log: Vec<AdminActivityEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::ADMIN_ACTIVITY_LOG)
+            .unwrap_or_else(|| Vec::new(&env));
+        let total = log.len();
+        let mut page: Vec<AdminActivityEntry> = Vec::new(&env);
+        let end = if offset + limit < total {
+            offset + limit
+        } else {
+            total
+        };
+        for i in offset..end {
+            page.push_back(log.get(i).unwrap());
+        }
+        AdminActivityPage { entries: page, total }
+    }
+
+    /// Retrieve admin activity entries for a specific actor (most-recent first).
+    /// Returns up to `limit` matching entries; maximum is 50.
+    pub fn get_admin_activity_by_actor(
+        env: Env,
+        actor: Address,
+        limit: u32,
+    ) -> Vec<AdminActivityEntry> {
+        if limit > 50 {
+            panic!("limit must not exceed 50");
+        }
+        let log: Vec<AdminActivityEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::ADMIN_ACTIVITY_LOG)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut result: Vec<AdminActivityEntry> = Vec::new(&env);
+        let len = log.len();
+        let mut i = len;
+        while i > 0 && result.len() < limit {
+            i -= 1;
+            let entry = log.get(i).unwrap();
+            if entry.actor == actor {
+                result.push_back(entry);
+            }
+        }
+        result
+    }
+
+    /// Internal: append one entry to the admin activity log.
+    /// Capped at 500 entries; oldest entries are trimmed when the cap is hit.
+    fn append_admin_activity(
+        env: &Env,
+        action: AdminActivityAction,
+        actor: Address,
+        detail: String,
+    ) {
+        let seq: u32 = env
+            .storage()
+            .instance()
+            .get(&keys::ADMIN_ACTIVITY_CTR)
+            .unwrap_or(0u32)
+            + 1;
+        env.storage()
+            .instance()
+            .set(&keys::ADMIN_ACTIVITY_CTR, &seq);
+        let entry = AdminActivityEntry {
+            sequence: seq,
+            action: action.clone(),
+            actor,
+            detail,
+            timestamp: env.ledger().timestamp(),
+        };
+        let mut log: Vec<AdminActivityEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::ADMIN_ACTIVITY_LOG)
+            .unwrap_or_else(|| Vec::new(env));
+        log.push_back(entry);
+        if log.len() > 500 {
+            let mut trimmed: Vec<AdminActivityEntry> = Vec::new(env);
+            for i in 1..log.len() {
+                trimmed.push_back(log.get(i).unwrap());
+            }
+            log = trimmed;
+        }
+        env.storage()
+            .persistent()
+            .set(&keys::ADMIN_ACTIVITY_LOG, &log);
+        env.events()
+            .publish((symbol_short!("adm_act"),), (seq, action));
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-Source Health Submission (issue #300)
+    // -----------------------------------------------------------------------
+
+    /// Register a trusted health data source.
+    ///
+    /// Only the contract admin may register sources. `weight_bps` expresses the
+    /// source's relative influence in basis points (10 000 = 100 %). Multiple
+    /// sources need not sum to 10 000 — the aggregation normalises by total
+    /// weight of contributing sources.
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - `weight_bps` is zero.
+    pub fn register_health_source(
+        env: Env,
+        caller: Address,
+        source_id: String,
+        weight_bps: u32,
+    ) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can register health sources");
+        }
+        if weight_bps == 0 {
+            panic!("weight_bps must be greater than zero");
+        }
+        let now = env.ledger().timestamp();
+        let source = HealthSource {
+            source_id: source_id.clone(),
+            weight_bps,
+            trusted: true,
+            registered_at: now,
+        };
+        let mut sources: Vec<HealthSource> = env
+            .storage()
+            .instance()
+            .get(&keys::HEALTH_SOURCES)
+            .unwrap_or_else(|| Vec::new(&env));
+        // Replace if already registered, otherwise append
+        let mut found = false;
+        let mut updated: Vec<HealthSource> = Vec::new(&env);
+        for s in sources.iter() {
+            if s.source_id == source_id {
+                updated.push_back(source.clone());
+                found = true;
+            } else {
+                updated.push_back(s);
+            }
+        }
+        if !found {
+            updated.push_back(source);
+        }
+        env.storage().instance().set(&keys::HEALTH_SOURCES, &updated);
+        env.events()
+            .publish((symbol_short!("src_reg"), caller.clone()), source_id.clone());
+        Self::append_admin_activity(
+            &env,
+            AdminActivityAction::AssetRegistered,
+            caller,
+            source_id,
+        );
+    }
+
+    /// Revoke trust for a health source (it can no longer submit data).
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin.
+    /// - Source with `source_id` is not registered.
+    pub fn revoke_health_source(env: Env, caller: Address, source_id: String) {
+        caller.require_auth();
+        let admin: Address = env.storage().instance().get(&keys::ADMIN).unwrap();
+        if caller != admin {
+            panic!("only admin can revoke health sources");
+        }
+        let mut sources: Vec<HealthSource> = env
+            .storage()
+            .instance()
+            .get(&keys::HEALTH_SOURCES)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut found = false;
+        let mut updated: Vec<HealthSource> = Vec::new(&env);
+        for s in sources.iter() {
+            if s.source_id == source_id {
+                let mut revoked = s.clone();
+                revoked.trusted = false;
+                updated.push_back(revoked);
+                found = true;
+            } else {
+                updated.push_back(s);
+            }
+        }
+        if !found {
+            panic!("health source not registered");
+        }
+        env.storage().instance().set(&keys::HEALTH_SOURCES, &updated);
+        env.events()
+            .publish((symbol_short!("src_rev"), caller), source_id);
+    }
+
+    /// Submit health data from a named trusted source.
+    ///
+    /// The source must be registered and trusted (see `register_health_source`).
+    /// Each source keeps its own per-asset entry; `get_aggregated_health` then
+    /// combines all trusted sources into a weighted-average view.
+    ///
+    /// # Panics
+    /// - `caller` is not the contract admin or a HealthSubmitter.
+    /// - `source_id` is not a registered trusted source.
+    pub fn submit_health_multi_source(
+        env: Env,
+        caller: Address,
+        source_id: String,
+        asset_code: String,
+        health_score: u32,
+        liquidity_score: u32,
+        price_stability_score: u32,
+        bridge_uptime_score: u32,
+    ) {
+        Self::assert_not_globally_paused(&env);
+        Self::check_permission(&env, &caller, AdminRole::HealthSubmitter);
+        // Verify this source is registered and trusted
+        let sources: Vec<HealthSource> = env
+            .storage()
+            .instance()
+            .get(&keys::HEALTH_SOURCES)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut is_trusted = false;
+        for s in sources.iter() {
+            if s.source_id == source_id && s.trusted {
+                is_trusted = true;
+                break;
+            }
+        }
+        if !is_trusted {
+            panic!("source is not registered or not trusted");
+        }
+        let now = env.ledger().timestamp();
+        let entry = SourcedHealthEntry {
+            source_id: source_id.clone(),
+            asset_code: asset_code.clone(),
+            health_score,
+            liquidity_score,
+            price_stability_score,
+            bridge_uptime_score,
+            submitted_at: now,
+        };
+        env.storage()
+            .persistent()
+            .set(&HealthSourceDataKey::Entry(source_id.clone(), asset_code.clone()), &entry);
+        env.events().publish(
+            (symbol_short!("ms_hlth"), caller.clone(), asset_code.clone()),
+            (source_id.clone(), health_score, now),
+        );
+        Self::append_replay_event(
+            &env,
+            String::from_str(&env, "ms_hlth"),
+            caller.clone(),
+            asset_code.clone(),
+            health_score as i128,
+        );
+        Self::append_admin_activity(
+            &env,
+            AdminActivityAction::HealthSubmitted,
+            caller,
+            asset_code,
+        );
+    }
+
+    /// Compute a weighted-average health view for an asset across all trusted sources.
+    ///
+    /// Sources with no entry for `asset_code` are skipped. Returns `None` if no
+    /// trusted source has submitted data for the asset.
+    pub fn get_aggregated_health(env: Env, asset_code: String) -> Option<AggregatedHealth> {
+        let sources: Vec<HealthSource> = env
+            .storage()
+            .instance()
+            .get(&keys::HEALTH_SOURCES)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut total_weight: u64 = 0;
+        let mut weighted_health: u64 = 0;
+        let mut weighted_liquidity: u64 = 0;
+        let mut weighted_price: u64 = 0;
+        let mut weighted_uptime: u64 = 0;
+        let mut count: u32 = 0;
+
+        for source in sources.iter() {
+            if !source.trusted {
+                continue;
+            }
+            let key = HealthSourceDataKey::Entry(source.source_id.clone(), asset_code.clone());
+            let entry: Option<SourcedHealthEntry> = env.storage().persistent().get(&key);
+            if let Some(e) = entry {
+                let w = source.weight_bps as u64;
+                total_weight += w;
+                weighted_health += w * e.health_score as u64;
+                weighted_liquidity += w * e.liquidity_score as u64;
+                weighted_price += w * e.price_stability_score as u64;
+                weighted_uptime += w * e.bridge_uptime_score as u64;
+                count += 1;
+            }
+        }
+
+        if count == 0 || total_weight == 0 {
+            return None;
+        }
+
+        Some(AggregatedHealth {
+            asset_code,
+            weighted_health_score: (weighted_health / total_weight) as u32,
+            weighted_liquidity_score: (weighted_liquidity / total_weight) as u32,
+            weighted_price_stability_score: (weighted_price / total_weight) as u32,
+            weighted_bridge_uptime_score: (weighted_uptime / total_weight) as u32,
+            source_count: count,
+            computed_at: env.ledger().timestamp(),
+        })
+    }
+
+    /// Return the list of all registered health sources.
+    pub fn get_health_sources(env: Env) -> Vec<HealthSource> {
+        env.storage()
+            .instance()
+            .get(&keys::HEALTH_SOURCES)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // -----------------------------------------------------------------------
+    // Event Replay Helpers (issue #296)
+    // -----------------------------------------------------------------------
+
+    /// Return the current event payload schema version.
+    ///
+    /// Off-chain consumers should call this after connecting to detect whether
+    /// a schema migration has occurred and rebuild their replay state if needed.
+    pub fn get_replay_schema_version(_env: Env) -> u32 {
+        EVENT_SCHEMA_VERSION
+    }
+
+    /// Query replay-friendly event history ordered by ascending `ordering_key`.
+    ///
+    /// Returns up to `limit` entries whose `ordering_key` is ≥
+    /// `from_ordering_key`. Pass `0` to start from the beginning of the log.
+    /// Maximum `limit` per call is 100. The returned `EventReplayPage` includes
+    /// the total log size so callers can implement cursor-based pagination.
+    pub fn get_replay_events(env: Env, from_ordering_key: u64, limit: u32) -> EventReplayPage {
+        if limit > 100 {
+            panic!("limit must not exceed 100");
+        }
+        let log: Vec<EventReplayEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::EVENT_REPLAY_LOG)
+            .unwrap_or_else(|| Vec::new(&env));
+        let total = log.len();
+        let mut page: Vec<EventReplayEntry> = Vec::new(&env);
+        for i in 0..total {
+            if page.len() >= limit {
+                break;
+            }
+            let entry = log.get(i).unwrap();
+            if entry.ordering_key >= from_ordering_key {
+                page.push_back(entry);
+            }
+        }
+        EventReplayPage {
+            entries: page,
+            total,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+    }
+
+    /// Return the total number of entries in the event replay log.
+    pub fn get_replay_log_size(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get::<_, Vec<EventReplayEntry>>(&keys::EVENT_REPLAY_LOG)
+            .map(|v| v.len())
+            .unwrap_or(0)
+    }
+
+    /// Internal: append one entry to the event replay log.
+    ///
+    /// The `ordering_key` is `(timestamp << 32) | (sequence & 0xFFFF_FFFF)`
+    /// providing stable, deterministic ordering even for same-timestamp events.
+    /// Log is capped at 1 000 entries; oldest entries are trimmed on overflow.
+    fn append_replay_event(
+        env: &Env,
+        event_type: String,
+        actor: Address,
+        subject: String,
+        value: i128,
+    ) {
+        let seq: u32 = env
+            .storage()
+            .instance()
+            .get(&keys::EVENT_REPLAY_CTR)
+            .unwrap_or(0u32)
+            + 1;
+        env.storage().instance().set(&keys::EVENT_REPLAY_CTR, &seq);
+        let now = env.ledger().timestamp();
+        let ordering_key = (now << 32) | (seq as u64);
+        let entry = EventReplayEntry {
+            event_id: seq,
+            event_type,
+            actor,
+            subject,
+            value,
+            timestamp: now,
+            ordering_key,
+            schema_version: EVENT_SCHEMA_VERSION,
+        };
+        let mut log: Vec<EventReplayEntry> = env
+            .storage()
+            .persistent()
+            .get(&keys::EVENT_REPLAY_LOG)
+            .unwrap_or_else(|| Vec::new(env));
+        log.push_back(entry);
+        if log.len() > 1000 {
+            let mut trimmed: Vec<EventReplayEntry> = Vec::new(env);
+            for i in 1..log.len() {
+                trimmed.push_back(log.get(i).unwrap());
+            }
+            log = trimmed;
+        }
+        env.storage()
+            .persistent()
+            .set(&keys::EVENT_REPLAY_LOG, &log);
+    }
 }
 
 #[cfg(test)]
@@ -10767,5 +11586,415 @@ mod tests {
 
         let export = client.get_all_configs();
         assert_eq!(export.total, 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // Emergency Recovery tests (issue #298)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_enter_recovery_mode_stores_state() {
+        let (env, client, admin) = setup();
+        let reason = String::from_str(&env, "partial oracle failure");
+        client.enter_recovery_mode(&admin, &reason);
+        let state = client.get_recovery_state();
+        assert!(state.active);
+        assert_eq!(state.reason, reason);
+        assert_eq!(state.entered_by, admin);
+        assert_eq!(state.step_count, 0);
+    }
+
+    #[test]
+    fn test_exit_recovery_mode_clears_flag() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.exit_recovery_mode(&admin);
+        let state = client.get_recovery_state();
+        assert!(!state.active);
+    }
+
+    #[test]
+    fn test_record_recovery_step_appends_to_log() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        let desc = String::from_str(&env, "reverted oracle config");
+        client.record_recovery_step(&admin, &desc);
+        let state = client.get_recovery_state();
+        assert_eq!(state.step_count, 1);
+        let steps = client.get_recovery_steps();
+        assert_eq!(steps.len(), 1);
+        let step = steps.get(0).unwrap();
+        assert_eq!(step.description, desc);
+        assert!(step.completed);
+        assert_eq!(step.actor, admin);
+    }
+
+    #[test]
+    fn test_multiple_recovery_steps_ordered() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.record_recovery_step(&admin, &String::from_str(&env, "step one"));
+        client.record_recovery_step(&admin, &String::from_str(&env, "step two"));
+        client.record_recovery_step(&admin, &String::from_str(&env, "step three"));
+        let steps = client.get_recovery_steps();
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps.get(0).unwrap().description, String::from_str(&env, "step one"));
+        assert_eq!(steps.get(2).unwrap().description, String::from_str(&env, "step three"));
+    }
+
+    #[test]
+    #[should_panic(expected = "recovery mode already active")]
+    fn test_enter_recovery_mode_twice_panics() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "r1"));
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "r2"));
+    }
+
+    #[test]
+    #[should_panic(expected = "recovery mode is not active")]
+    fn test_exit_recovery_mode_when_not_active_panics() {
+        let (_, client, admin) = setup();
+        client.exit_recovery_mode(&admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "recovery mode is not active")]
+    fn test_record_step_without_recovery_mode_panics() {
+        let (env, client, admin) = setup();
+        client.record_recovery_step(&admin, &String::from_str(&env, "step"));
+    }
+
+    #[test]
+    fn test_recovery_enter_emits_event() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        let events = env.events().all();
+        assert!(!events.is_empty());
+    }
+
+    #[test]
+    fn test_recovery_exit_emits_event() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.exit_recovery_mode(&admin);
+        // Both enter and exit emit events; combined log must be non-empty.
+        let events = env.events().all();
+        assert!(!events.is_empty());
+    }
+
+    #[test]
+    fn test_recovery_step_reset_on_reentry() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "first"));
+        client.record_recovery_step(&admin, &String::from_str(&env, "step from first session"));
+        client.exit_recovery_mode(&admin);
+        // Re-enter: step log should be cleared
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "second"));
+        let state = client.get_recovery_state();
+        assert_eq!(state.step_count, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin Activity Service tests (issue #299)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_admin_activity_log_populated_on_recovery_enter() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        let page = client.get_admin_activity(&1, &0);
+        assert_eq!(page.total, 1);
+        let entry = page.entries.get(0).unwrap();
+        assert_eq!(entry.action, AdminActivityAction::RecoveryEntered);
+        assert_eq!(entry.actor, admin);
+        assert_eq!(entry.sequence, 1);
+    }
+
+    #[test]
+    fn test_admin_activity_log_populated_on_recovery_exit() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.exit_recovery_mode(&admin);
+        let page = client.get_admin_activity(&50, &0);
+        // Should have 2 entries: RecoveryEntered and RecoveryExited
+        assert_eq!(page.total, 2);
+        let last = page.entries.get(1).unwrap();
+        assert_eq!(last.action, AdminActivityAction::RecoveryExited);
+    }
+
+    #[test]
+    fn test_admin_activity_get_by_actor_returns_matching() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.exit_recovery_mode(&admin);
+        let entries = client.get_admin_activity_by_actor(&admin, &10);
+        // Both enter and exit were performed by admin
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_admin_activity_get_by_actor_most_recent_first() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        client.exit_recovery_mode(&admin);
+        let entries = client.get_admin_activity_by_actor(&admin, &10);
+        // Most recent (RecoveryExited) should come first in the result
+        assert_eq!(entries.get(0).unwrap().action, AdminActivityAction::RecoveryExited);
+        assert_eq!(entries.get(1).unwrap().action, AdminActivityAction::RecoveryEntered);
+    }
+
+    #[test]
+    fn test_admin_activity_pagination_offset() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "i1"));
+        client.exit_recovery_mode(&admin);
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "i2"));
+        client.exit_recovery_mode(&admin);
+        // Total = 4 entries. Fetch page 2 (offset=2, limit=2)
+        let page = client.get_admin_activity(&2, &2);
+        assert_eq!(page.total, 4);
+        assert_eq!(page.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_admin_activity_sequence_monotonically_increases() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "i1"));
+        client.exit_recovery_mode(&admin);
+        let page = client.get_admin_activity(&10, &0);
+        assert_eq!(page.entries.get(0).unwrap().sequence, 1);
+        assert_eq!(page.entries.get(1).unwrap().sequence, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "limit must not exceed 50")]
+    fn test_admin_activity_limit_exceeds_max_panics() {
+        let (_, client, _) = setup();
+        client.get_admin_activity(&51, &0);
+    }
+
+    #[test]
+    fn test_admin_activity_empty_log_returns_zero_total() {
+        let (_, client, _) = setup();
+        let page = client.get_admin_activity(&10, &0);
+        assert_eq!(page.total, 0);
+        assert_eq!(page.entries.len(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-Source Health Submission tests (issue #300)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_register_health_source_stores_source() {
+        let (env, client, admin) = setup();
+        let source_id = String::from_str(&env, "oracle-1");
+        client.register_health_source(&admin, &source_id, &5000);
+        let sources = client.get_health_sources();
+        assert_eq!(sources.len(), 1);
+        let s = sources.get(0).unwrap();
+        assert_eq!(s.source_id, source_id);
+        assert_eq!(s.weight_bps, 5000);
+        assert!(s.trusted);
+    }
+
+    #[test]
+    fn test_register_health_source_update_existing() {
+        let (env, client, admin) = setup();
+        let source_id = String::from_str(&env, "oracle-1");
+        client.register_health_source(&admin, &source_id, &5000);
+        client.register_health_source(&admin, &source_id, &8000);
+        let sources = client.get_health_sources();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources.get(0).unwrap().weight_bps, 8000);
+    }
+
+    #[test]
+    #[should_panic(expected = "weight_bps must be greater than zero")]
+    fn test_register_health_source_zero_weight_panics() {
+        let (env, client, admin) = setup();
+        client.register_health_source(&admin, &String::from_str(&env, "oracle-1"), &0);
+    }
+
+    #[test]
+    fn test_submit_health_multi_source_stores_entry() {
+        let (env, client, admin) = setup();
+        let source_id = String::from_str(&env, "oracle-1");
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.register_health_source(&admin, &source_id, &10000);
+        client.submit_health_multi_source(&admin, &source_id, &asset, &90, &85, &80, &95);
+        let agg = client.get_aggregated_health(&asset).unwrap();
+        assert_eq!(agg.weighted_health_score, 90);
+        assert_eq!(agg.source_count, 1);
+    }
+
+    #[test]
+    fn test_aggregated_health_weighted_average_two_sources() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        let src1 = String::from_str(&env, "oracle-1");
+        let src2 = String::from_str(&env, "oracle-2");
+        // src1 weight=3000 (30%), score=100; src2 weight=7000 (70%), score=50
+        // Expected weighted avg = (3000*100 + 7000*50) / 10000 = (300000+350000)/10000 = 65
+        client.register_health_source(&admin, &src1, &3000);
+        client.register_health_source(&admin, &src2, &7000);
+        client.submit_health_multi_source(&admin, &src1, &asset, &100, &100, &100, &100);
+        client.submit_health_multi_source(&admin, &src2, &asset, &50, &50, &50, &50);
+        let agg = client.get_aggregated_health(&asset).unwrap();
+        assert_eq!(agg.weighted_health_score, 65);
+        assert_eq!(agg.source_count, 2);
+    }
+
+    #[test]
+    fn test_aggregated_health_returns_none_when_no_submissions() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.register_health_source(&admin, &String::from_str(&env, "oracle-1"), &10000);
+        // No submission made
+        let agg = client.get_aggregated_health(&asset);
+        assert!(agg.is_none());
+    }
+
+    #[test]
+    fn test_revoke_health_source_excludes_from_aggregation() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        let src = String::from_str(&env, "oracle-1");
+        client.register_health_source(&admin, &src, &10000);
+        client.submit_health_multi_source(&admin, &src, &asset, &90, &80, &70, &60);
+        client.revoke_health_source(&admin, &src);
+        // After revoke, the revoked source should not contribute to aggregation
+        let agg = client.get_aggregated_health(&asset);
+        assert!(agg.is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "source is not registered or not trusted")]
+    fn test_submit_multi_source_unregistered_source_panics() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health_multi_source(
+            &admin,
+            &String::from_str(&env, "unknown"),
+            &asset,
+            &80,
+            &80,
+            &80,
+            &80,
+        );
+    }
+
+    #[test]
+    fn test_submit_multi_source_emits_event() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        let src = String::from_str(&env, "oracle-1");
+        client.register_asset(&admin, &asset);
+        client.register_health_source(&admin, &src, &10000);
+        client.submit_health_multi_source(&admin, &src, &asset, &80, &80, &80, &80);
+        let events = env.events().all();
+        assert!(!events.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Event Replay Helper tests (issue #296)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_get_replay_schema_version_returns_constant() {
+        let (_, client, _) = setup();
+        assert_eq!(client.get_replay_schema_version(), EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_replay_log_size_zero_initially() {
+        let (_, client, _) = setup();
+        assert_eq!(client.get_replay_log_size(), 0);
+    }
+
+    #[test]
+    fn test_submit_health_appends_replay_entry() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &85, &80, &75, &90);
+        assert_eq!(client.get_replay_log_size(), 1);
+    }
+
+    #[test]
+    fn test_replay_entry_has_correct_event_type() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &85, &80, &75, &90);
+        let page = client.get_replay_events(&0, &10);
+        assert_eq!(page.total, 1);
+        let entry = page.entries.get(0).unwrap();
+        assert_eq!(entry.event_type, String::from_str(&env, "health_up"));
+        assert_eq!(entry.value, 85);
+        assert_eq!(entry.schema_version, EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_replay_entry_ordering_key_monotone() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        client.submit_health(&admin, &asset, &70, &70, &70, &70);
+        let page = client.get_replay_events(&0, &10);
+        assert_eq!(page.total, 2);
+        let first = page.entries.get(0).unwrap();
+        let second = page.entries.get(1).unwrap();
+        assert!(second.ordering_key > first.ordering_key);
+        assert!(second.event_id > first.event_id);
+    }
+
+    #[test]
+    fn test_get_replay_events_from_ordering_key_filters() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        client.submit_health(&admin, &asset, &70, &70, &70, &70);
+        // Use the ordering_key of the second entry to fetch only from there
+        let all = client.get_replay_events(&0, &10);
+        let second_key = all.entries.get(1).unwrap().ordering_key;
+        let filtered = client.get_replay_events(&second_key, &10);
+        assert_eq!(filtered.entries.len(), 1);
+        assert_eq!(filtered.entries.get(0).unwrap().value, 70);
+    }
+
+    #[test]
+    fn test_replay_page_includes_schema_version() {
+        let (env, client, admin) = setup();
+        let asset = String::from_str(&env, "USDC");
+        client.register_asset(&admin, &asset);
+        client.submit_health(&admin, &asset, &80, &80, &80, &80);
+        let page = client.get_replay_events(&0, &1);
+        assert_eq!(page.schema_version, EVENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    #[should_panic(expected = "limit must not exceed 100")]
+    fn test_get_replay_events_limit_exceeds_max_panics() {
+        let (_, client, _) = setup();
+        client.get_replay_events(&0, &101);
+    }
+
+    #[test]
+    fn test_recovery_enter_appends_replay_entry() {
+        let (env, client, admin) = setup();
+        client.enter_recovery_mode(&admin, &String::from_str(&env, "incident"));
+        assert_eq!(client.get_replay_log_size(), 1);
+        let page = client.get_replay_events(&0, &10);
+        let entry = page.entries.get(0).unwrap();
+        assert_eq!(entry.event_type, String::from_str(&env, "rec_entr"));
+        assert_eq!(entry.actor, admin);
     }
 }
