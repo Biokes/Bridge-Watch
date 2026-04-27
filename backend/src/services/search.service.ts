@@ -619,13 +619,16 @@ export class SearchService {
     }
 
     if (filters.status) {
-      query = query.andWhereRaw("metadata::text ILIKE ?", [`%"status":"${String(filters.status)}"%`]);
+      const statusFilter = this.escapeMetadataFilterValue(filters.status);
+      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"status":"${statusFilter}"%`]);
     }
     if (filters.severity) {
-      query = query.andWhereRaw("metadata::text ILIKE ?", [`%"severity":"${String(filters.severity)}"%`]);
+      const severityFilter = this.escapeMetadataFilterValue(filters.severity);
+      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"severity":"${severityFilter}"%`]);
     }
     if (filters.priority) {
-      query = query.andWhereRaw("metadata::text ILIKE ?", [`%"priority":"${String(filters.priority)}"%`]);
+      const priorityFilter = this.escapeMetadataFilterValue(filters.priority);
+      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"priority":"${priorityFilter}"%`]);
     }
 
     query = query.andWhere(function searchMatcher() {
@@ -660,6 +663,11 @@ export class SearchService {
       highlights: this.generateHighlights(row, searchTerms),
       metadata,
     };
+  }
+
+  private escapeMetadataFilterValue(value: unknown): string {
+    const serialized = JSON.stringify(String(value)).slice(1, -1);
+    return serialized.replace(/[\\%_]/g, "\\$&");
   }
 
   private calculateRelevanceScore(
