@@ -1,44 +1,62 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { NotificationProvider } from "../context/NotificationContext";
-import { WebSocketProvider } from "../contexts/WebSocketContext";
-import ThemeProvider from "../theme/ThemeProvider";
+import { WatchlistProvider } from "../hooks/useWatchlist";
 import Navbar from "./Navbar";
+import { useNotificationStore } from "../stores/notificationStore";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-});
+function resetNotifications() {
+  useNotificationStore.setState(useNotificationStore.getInitialState(), true);
+}
 
 describe("Navbar", () => {
-  it("opens and closes the mobile navigation drawer", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetNotifications();
+  });
+
+  it("opens notifications drawer and keeps trigger ARIA state in sync", () => {
+    useNotificationStore.getState().addNotification({
+      id: "n1",
+      type: "info",
+      priority: "medium",
+      title: "One",
+      message: "One",
+      timestamp: 1,
+    });
+
     render(
       <MemoryRouter>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider>
-            <WebSocketProvider>
-              <NotificationProvider>
-                <Navbar />
-              </NotificationProvider>
-            </WebSocketProvider>
-          </ThemeProvider>
-        </QueryClientProvider>
+        <WatchlistProvider>
+          <Navbar />
+        </WatchlistProvider>
       </MemoryRouter>
     );
 
-    const openButton = screen.getByRole("button", {
-      name: /open navigation menu/i,
-    });
+    const trigger = screen.getByRole("button", { name: /open notifications/i });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveAttribute("aria-controls", "notifications-drawer");
+    expect(screen.getByText("1")).toBeInTheDocument();
 
-    fireEvent.click(openButton);
-    expect(
-      screen.getByRole("dialog", { name: /mobile navigation/i })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/control surface/i)).toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /close mobile menu/i }));
-    expect(
-      screen.getByRole("button", { name: /open navigation menu/i })
-    ).toBeInTheDocument();
+  it("closes on Escape and restores focus to trigger", () => {
+    render(
+      <MemoryRouter>
+        <WatchlistProvider>
+          <Navbar />
+        </WatchlistProvider>
+      </MemoryRouter>
+    );
+
+    const trigger = screen.getByRole("button", { name: /open notifications/i });
+    fireEvent.click(trigger);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
   });
 });
