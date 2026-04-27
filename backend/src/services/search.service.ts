@@ -666,8 +666,11 @@ export class SearchService {
   }
 
   private escapeMetadataFilterValue(value: unknown): string {
-    const serialized = JSON.stringify(String(value)).slice(1, -1);
-    return serialized.replace(/[\\%_]/g, "\\$&");
+    return String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, "\\\"")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
   }
 
   private calculateRelevanceScore(
