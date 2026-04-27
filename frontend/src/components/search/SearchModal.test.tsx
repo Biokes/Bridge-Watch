@@ -56,7 +56,8 @@ describe("SearchModal", () => {
   it("closes when Escape is pressed", () => {
     const onClose = vi.fn();
     renderModal(true, onClose);
-    fireEvent.keyDown(screen.getByRole("dialog").parentElement!, { key: "Escape" });
+    // Fire on the input so the event bubbles up to the modal panel's onKeyDown handler
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

@@ -3,13 +3,11 @@
  *
  * A focused autocomplete hook built on top of useSearch.
  * Provides a minimal surface for the combobox/autocomplete pattern:
- *  - debounced query state
+ *  - debounced query state (200 ms, handled by useSearch internally)
  *  - grouped suggestion results (assets, bridges, pages, …)
  *  - loading / empty states
  *  - recent-search persistence
  *  - keyboard-navigation helpers (activeIndex + navigation callbacks)
- *
- * Debounce delay is 300 ms to avoid excessive API calls while the user types.
  */
 import { useState, useCallback } from "react";
 import { useSearch, type SearchResult, type SearchCategory } from "./useSearch";
@@ -61,10 +59,8 @@ export interface UseSearchSuggestionsReturn {
 }
 
 /**
- * A 300 ms debounce wrapper is layered on top of useSearch's internal 200 ms
- * debounce so that callers of this hook see slightly more aggressive debouncing
- * suitable for an inline combobox (vs the full-screen modal which can afford a
- * shorter delay).
+ * Delegates debouncing to useSearch (200 ms internal delay) and adds
+ * keyboard-navigation state and grouped-results utilities on top.
  */
 export function useSearchSuggestions(): UseSearchSuggestionsReturn {
   const {
