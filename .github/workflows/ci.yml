@@ -108,6 +108,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Storybook build
+        run: npm --workspace=frontend run build-storybook
+
       - name: Test
         run: npm run test
         continue-on-error: true

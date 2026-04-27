@@ -1,13 +1,22 @@
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useBridges } from "../hooks/useBridges";
+import { useFavorites } from "../hooks/useFavorites";
 import { useRefreshControls } from "../hooks/useRefreshControls";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import BridgeStatusCard from "../components/BridgeStatusCard";
+import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import RefreshControls from "../components/RefreshControls";
 import PullToRefresh from "../components/PullToRefresh";
 import { SkeletonCard, ErrorBoundary } from "../components/Skeleton";
 
 export default function Bridges() {
+  const {
+    favoritesFilterMode,
+    setFavoritesFilterMode,
+    toggleFavoriteBridge,
+    favoriteBridges,
+  } = useFavorites();
+
   const refreshControls = useRefreshControls({
     viewId: "bridges",
     targets: [{ id: "bridges", label: "Bridge status", queryKey: ["bridges"] }],
@@ -24,6 +33,12 @@ export default function Bridges() {
     enabled: true,
     onRefresh: refreshControls.refreshNow,
   });
+
+  const filteredBridges = useMemo(() => {
+    const bridges = data?.bridges ?? [];
+    if (favoritesFilterMode !== "favorites") return bridges;
+    return bridges.filter((b) => favoriteBridges.includes(b.name));
+  }, [data?.bridges, favoritesFilterMode, favoriteBridges]);
 
   return (
     <div className="space-y-8">
@@ -57,7 +72,33 @@ export default function Bridges() {
         lastUpdatedAt={refreshControls.lastUpdatedAt}
       />
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="inline-flex rounded-full border border-stellar-border p-0.5">
+          <button
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              favoritesFilterMode === "all"
+                ? "bg-stellar-blue text-white"
+                : "text-stellar-text-secondary hover:text-white"
+            }`}
+            aria-pressed={favoritesFilterMode === "all"}
+            onClick={() => setFavoritesFilterMode("all")}
+          >
+            All bridges
+          </button>
+          <button
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              favoritesFilterMode === "favorites"
+                ? "bg-stellar-blue text-white"
+                : "text-stellar-text-secondary hover:text-white"
+            }`}
+            aria-pressed={favoritesFilterMode === "favorites"}
+            onClick={() => setFavoritesFilterMode("favorites")}
+          >
+            Favorites only
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => {
@@ -86,11 +127,30 @@ export default function Bridges() {
               ))}
             </div>
           ) : data && data.bridges.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {data.bridges.map((bridge) => (
-                <BridgeStatusCard key={bridge.name} {...bridge} />
-              ))}
-            </div>
+            filteredBridges.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredBridges.map((bridge) => (
+                  <BridgeStatusCard
+                    key={bridge.name}
+                    {...bridge}
+                    topRight={
+                      <FavoriteTagChip
+                        compact
+                        label={bridge.name}
+                        active={favoriteBridges.includes(bridge.name)}
+                        onToggle={() => toggleFavoriteBridge(bridge.name)}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-stellar-border bg-stellar-card p-8 text-center">
+                <p className="text-stellar-text-secondary">
+                  No bridges match your favorites filter. Clear the filter or star bridges from each card.
+                </p>
+              </div>
+            )
           ) : (
             <div className="bg-stellar-card border border-stellar-border rounded-lg p-8 text-center">
               <p className="text-stellar-text-secondary">
