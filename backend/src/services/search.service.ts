@@ -619,16 +619,13 @@ export class SearchService {
     }
 
     if (filters.status) {
-      const statusFilter = this.escapeMetadataFilterValue(filters.status);
-      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"status":"${statusFilter}"%`]);
+      query = query.andWhereRaw("metadata ->> 'status' = ?", [String(filters.status)]);
     }
     if (filters.severity) {
-      const severityFilter = this.escapeMetadataFilterValue(filters.severity);
-      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"severity":"${severityFilter}"%`]);
+      query = query.andWhereRaw("metadata ->> 'severity' = ?", [String(filters.severity)]);
     }
     if (filters.priority) {
-      const priorityFilter = this.escapeMetadataFilterValue(filters.priority);
-      query = query.andWhereRaw("metadata::text ILIKE ? ESCAPE '\\\\'", [`%"priority":"${priorityFilter}"%`]);
+      query = query.andWhereRaw("metadata ->> 'priority' = ?", [String(filters.priority)]);
     }
 
     query = query.andWhere(function searchMatcher() {
@@ -663,14 +660,6 @@ export class SearchService {
       highlights: this.generateHighlights(row, searchTerms),
       metadata,
     };
-  }
-
-  private escapeMetadataFilterValue(value: unknown): string {
-    return String(value)
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, "\\\"")
-      .replace(/%/g, "\\%")
-      .replace(/_/g, "\\_");
   }
 
   private calculateRelevanceScore(
