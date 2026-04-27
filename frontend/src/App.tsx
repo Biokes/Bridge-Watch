@@ -12,6 +12,8 @@ const Reports = lazy(() => import("./pages/Reports"));
 const Landing = lazy(() => import("./pages/Landing"));
 const Settings = lazy(() => import("./pages/Settings"));
 const WatchlistPage = lazy(() => import("./pages/Watchlist"));
+const Transactions = lazy(() => import("./pages/Transactions"));
+const Dependencies = lazy(() => import("./pages/Dependencies"));
 
 
 function NotificationInitializer() {
@@ -41,6 +43,8 @@ function App() {
             <Route path="/bridges" element={<Bridges />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/dependencies" element={<Dependencies />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
@@ -52,4 +56,3 @@ function App() {
 }
 
 export default App;
-

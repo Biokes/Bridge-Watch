@@ -46,6 +46,46 @@ export interface BridgeStats {
   totalTransactions: number;
   averageTransferTime: number;
   uptime30d: number;
+}
+
+export type DependencyNodeType =
+  | "bridge"
+  | "oracle"
+  | "indexer"
+  | "rpc"
+  | "queue"
+  | "database"
+  | "notifier"
+  | "api";
+
+export type DependencyNodeStatus = "healthy" | "degraded" | "down" | "unknown";
+
+export interface DependencyNode {
+  id: string;
+  label: string;
+  type: DependencyNodeType;
+  status: DependencyNodeStatus;
+  description: string;
+  impactHint: string;
+}
+
+export interface DependencyEdge {
+  from: string;
+  to: string;
+  kind: "data" | "control" | "notification";
+}
+
+export interface DependencyGraph {
+  nodes: DependencyNode[];
+  edges: DependencyEdge[];
+  summary: {
+    totalNodes: number;
+    totalEdges: number;
+    downServices: number;
+    degradedServices: number;
+  };
+}
+
 // Transaction History types
 export type TransactionStatus = "pending" | "completed" | "failed";
 

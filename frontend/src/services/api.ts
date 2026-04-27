@@ -1,4 +1,13 @@
-import type { Asset, HealthScore, AssetWithHealth, Bridge , BridgeStats , TransactionPage, TransactionFilters} from "../types";
+import type {
+  Asset,
+  HealthScore,
+  AssetWithHealth,
+  Bridge,
+  BridgeStats,
+  DependencyGraph,
+  TransactionPage,
+  TransactionFilters,
+} from "../types";
 const API_BASE_URL = "/api/v1";
 
 async function fetchApi<T>(endpoint: string): Promise<T> {
@@ -81,6 +90,22 @@ export function getBridges() {
 
 export function getBridgeStats(bridge: string) {
   return fetchApi<BridgeStats | null>(`/bridges/${bridge}/stats`);
+}
+
+export function getDependencyGraph(filters?: {
+  type?: string;
+  status?: string;
+  search?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.search) params.set("q", filters.search);
+
+  const query = params.toString();
+  return fetchApi<DependencyGraph>(
+    `/metadata/dependencies${query ? `?${query}` : ""}`
+  );
 }
 
 // Transactions
