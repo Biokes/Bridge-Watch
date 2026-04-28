@@ -17,13 +17,37 @@ export default function Analytics() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">Analytics</h1>
-        <p className="mt-2 text-stellar-text-secondary">
-          Historical trends, cross-asset comparisons, and ecosystem health
-          metrics
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Analytics</h1>
+          <p className="mt-2 text-stellar-text-secondary">
+            Historical trends, cross-asset comparisons, and ecosystem health metrics
+          </p>
+        </div>
+        <button
+          onClick={handleCaptureSnapshot}
+          disabled={isLoading || bridgeData.length === 0}
+          className="px-4 py-2 bg-stellar-blue text-white rounded-lg text-sm font-semibold hover:bg-stellar-blue/90 transition-colors disabled:opacity-50"
+        >
+          Capture Snapshot
+        </button>
       </div>
+
+      {snapshot && (
+        <section className="print:m-0 print:p-0">
+          <div className="flex justify-between items-center mb-4 no-print">
+            <h2 className="text-xl font-semibold text-white">Latest Snapshot</h2>
+            <button onClick={() => setSnapshot(null)} className="text-sm text-stellar-text-secondary hover:text-white">
+              Dismiss
+            </button>
+          </div>
+          <SnapshotCard 
+            title={snapshot.title}
+            bridges={bridgeData.slice(0, 5)} 
+            timestamp={snapshot.timestamp}
+          />
+        </section>
+      )}
 
       {/* Overview Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -51,6 +75,8 @@ export default function Analytics() {
           <span className="text-sm font-medium text-stellar-text-primary">View All Metrics</span>
         </button>
       </div>
+
+      <BridgeComparison bridges={bridgeData} isLoading={isLoading} />
 
       {/* Health Score Trends */}
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">

@@ -297,6 +297,7 @@ export const useThemeStore = create<ThemeState & ThemeActions>()(
 
           // Set theme attribute
           root.setAttribute("data-theme", resolvedMode);
+          root.setAttribute("data-density", get().density);
 
           // Apply color variables
           Object.entries(colors).forEach(([key, value]) => {

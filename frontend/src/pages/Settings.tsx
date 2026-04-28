@@ -6,11 +6,14 @@ import ThemePresetsSection from "../components/settings/ThemePresetsSection";
 import { usePreferences } from "../context/PreferencesContext";
 import { useToast } from "../context/ToastContext";
 import { useNotificationContext } from "../hooks/useNotificationContext";
+import { useThemeStore, selectDensity } from "../stores/themeStore";
 
 export default function Settings() {
   const { prefs, setPrefs } = usePreferences();
   const { showSuccess } = useToast();
   const { addNotification } = useNotificationContext();
+  const density = useThemeStore(selectDensity);
+  const setDensity = useThemeStore((state) => state.setDensity);
 
   useEffect(() => {
     if (prefs.reducedMotion) {
@@ -30,7 +33,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-density">
       <div>
         <h1 className="text-3xl font-bold text-stellar-text-primary mb-2">Settings</h1>
         <p className="text-stellar-text-secondary">
@@ -111,6 +114,26 @@ export default function Settings() {
                   showSuccess("Preference saved.");
                 }}
               />
+            </label>
+            <label className="flex items-center justify-between gap-4 cursor-pointer">
+              <span className="text-stellar-text-secondary">
+                UI Density
+                <span className="block text-xs mt-1 text-stellar-text-secondary/80">
+                  Adjust the spacing and size of dashboard elements.
+                </span>
+              </span>
+              <select
+                className="rounded-md border border-stellar-border bg-stellar-dark px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-stellar-blue"
+                value={density}
+                onChange={(e) => {
+                  setDensity(e.target.value as any);
+                  showSuccess("Density preference updated.");
+                }}
+              >
+                <option value="compact">Compact</option>
+                <option value="comfortable">Comfortable</option>
+                <option value="spacious">Spacious</option>
+              </select>
             </label>
           </section>
 
