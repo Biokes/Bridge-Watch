@@ -8,6 +8,7 @@ import WatchlistWidget from "../components/watchlist/WatchlistWidget";
 import ExternalDependencyPanel from "../components/dashboard/ExternalDependencyPanel";
 import PullToRefresh from "../components/PullToRefresh";
 import ComparativeSparklineGrid from "../components/analytics/ComparativeSparklineGrid";
+import { SummaryCard } from "../components/SummaryCard";
 import AssetDiscoverySection from "../components/dashboard/AssetDiscoverySection";
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import { useFavorites } from "../hooks/useFavorites";
@@ -199,6 +200,44 @@ export default function Dashboard() {
           </select>
         </div>
       </div>
+
+      {/* Overview Stats */}
+      <section aria-labelledby="overview-stats">
+        <h2 id="overview-stats" className="text-xl font-semibold text-white mb-4">
+          Overview
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <SummaryCard
+            title="Total Value Locked"
+            value={bridgesLoading ? "--" : `$${bridgesData?.bridges.reduce((sum, b) => sum + b.totalValueLocked, 0).toLocaleString() || "0"}`}
+            loading={bridgesLoading}
+            icon="💰"
+            href="/bridges"
+          />
+          <SummaryCard
+            title="Monitored Assets"
+            value={assetsLoading ? "--" : assetsWithHealth?.length || 0}
+            loading={assetsLoading}
+            icon="📊"
+            href="/assets"
+          />
+          <SummaryCard
+            title="Active Bridges"
+            value={bridgesLoading ? "--" : bridgesData?.bridges.filter((b: any) => b.status !== "down").length || 0}
+            loading={bridgesLoading}
+            icon="🌉"
+            href="/bridges"
+          />
+          <SummaryCard
+            title="System Health"
+            value={assetsLoading ? "--" : "85%"}
+            trend={{ value: "Improving", direction: "up" }}
+            loading={assetsLoading}
+            icon="❤️"
+            href="/analytics"
+          />
+        </div>
+      </section>
 
       {showAssets ? <ComparativeSparklineGrid items={sparklineItems} /> : null}
 
