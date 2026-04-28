@@ -199,3 +199,25 @@ export interface CreateApiKeyResponse {
   apiKey: string;
   key: ApiKeyRecord;
 }
+
+/** Service dependency graph (`/metadata/dependencies`) */
+export type DependencyNodeStatus = "healthy" | "degraded" | "down" | "unknown";
+
+export type DependencyNodeType = string;
+
+export interface DependencyGraph {
+  summary: {
+    totalNodes: number;
+    degradedServices: number;
+    downServices: number;
+  };
+  nodes: Array<{
+    id: string;
+    label: string;
+    description: string;
+    type: DependencyNodeType;
+    status: DependencyNodeStatus;
+    impactHint: string;
+  }>;
+  edges: Array<{ from: string; to: string; kind: string }>;
+}
