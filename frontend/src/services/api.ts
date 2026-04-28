@@ -8,6 +8,7 @@ import type {
   BridgeStats,
   CreateApiKeyRequest,
   CreateApiKeyResponse,
+  DependencyGraph,
   HealthScore,
   TransactionFilters,
   TransactionPage,

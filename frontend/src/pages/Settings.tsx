@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import NotificationPreferences from "../components/NotificationPreferences";
 import AlertSuppressionControls from "../components/AlertSuppressionControls";
 import HelpTooltip from "../components/help/HelpTooltip";
+import ThemePresetsSection from "../components/settings/ThemePresetsSection";
 import { usePreferences } from "../context/PreferencesContext";
 import { useToast } from "../context/ToastContext";
 import { useNotificationContext } from "../hooks/useNotificationContext";
@@ -59,6 +60,8 @@ export default function Settings() {
           </section>
 
           <AlertSuppressionControls />
+
+          <ThemePresetsSection />
 
           <section
             className="rounded-xl border border-stellar-border bg-stellar-card p-6 space-y-6"
