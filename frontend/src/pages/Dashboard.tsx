@@ -11,6 +11,7 @@ import ComparativeSparklineGrid from "../components/analytics/ComparativeSparkli
 import AssetDiscoverySection from "../components/dashboard/AssetDiscoverySection";
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import { useFavorites } from "../hooks/useFavorites";
+import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
 
 type DashboardView = "overview" | "assets" | "bridges";
 type BridgeStatusFilter = "all" | "healthy" | "degraded" | "down" | "unknown";
@@ -158,22 +159,24 @@ export default function Dashboard() {
             >
               Refresh data
             </button>
-            {dashboardViews.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => dashboard.setView(view.id)}
-                className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                  dashboard.state.view === view.id
-                    ? "border-stellar-blue bg-stellar-blue/15 text-white"
-                    : "border-stellar-border text-stellar-text-secondary hover:border-stellar-blue hover:text-white"
-                }`}
-                aria-pressed={dashboard.state.view === view.id}
-                title={view.description}
+            <Tabs
+              activeTab={dashboard.state.view}
+              onTabChange={(id) => dashboard.setView(id as DashboardView)}
+            >
+              <TabList
+                aria-label="Dashboard views"
+                className="flex flex-wrap items-center gap-2"
               >
-                {view.label}
-              </button>
-            ))}
+                {dashboardViews.map((view) => (
+                  <Tab key={view.id} id={view.id}>
+                    {view.label}
+                  </Tab>
+                ))}
+              </TabList>
+              {dashboardViews.map((view) => (
+                <TabPanel key={view.id} id={view.id} keepMounted />
+              ))}
+            </Tabs>
           </div>
         </div>
 

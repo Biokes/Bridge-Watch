@@ -6,11 +6,17 @@ import ThemePresetsSection from "../components/settings/ThemePresetsSection";
 import { usePreferences } from "../context/PreferencesContext";
 import { useToast } from "../context/ToastContext";
 import { useNotificationContext } from "../hooks/useNotificationContext";
+import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
 
 export default function Settings() {
   const { prefs, setPrefs } = usePreferences();
   const { showSuccess } = useToast();
   const { addNotification } = useNotificationContext();
+  const refreshOptions = [
+    { value: 30_000 as const, label: "30 seconds" },
+    { value: 60_000 as const, label: "1 minute" },
+    { value: 120_000 as const, label: "2 minutes" },
+  ] as const;
 
   useEffect(() => {
     if (prefs.reducedMotion) {
@@ -128,29 +134,29 @@ export default function Settings() {
               Target interval for live dashboards. The app aligns polling with this preference where possible.
             </p>
             <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  { value: 30_000 as const, label: "30 seconds" },
-                  { value: 60_000 as const, label: "1 minute" },
-                  { value: 120_000 as const, label: "2 minutes" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    setPrefs({ dataRefreshMs: opt.value });
-                    showSuccess("Refresh interval updated.");
-                  }}
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-stellar-blue focus:ring-offset-2 focus:ring-offset-stellar-card ${
-                    prefs.dataRefreshMs === opt.value
-                      ? "bg-stellar-blue text-white"
-                      : "bg-stellar-dark text-stellar-text-secondary hover:text-stellar-text-primary border border-stellar-border"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              <Tabs
+                activeTab={String(prefs.dataRefreshMs)}
+                onTabChange={(id) => {
+                  setPrefs({ dataRefreshMs: Number(id) as 30000 | 60000 | 120000 });
+                  showSuccess("Refresh interval updated.");
+                }}
+              >
+                <TabList aria-label="Data refresh interval" className="flex flex-wrap gap-2">
+                  {refreshOptions.map((opt) => (
+                    <Tab
+                      key={opt.value}
+                      id={String(opt.value)}
+                      activeClassName="bg-stellar-blue text-white border-stellar-blue"
+                      inactiveClassName="bg-stellar-dark text-stellar-text-secondary hover:text-stellar-text-primary border border-stellar-border"
+                    >
+                      {opt.label}
+                    </Tab>
+                  ))}
+                </TabList>
+                {refreshOptions.map((opt) => (
+                  <TabPanel key={opt.value} id={String(opt.value)} keepMounted />
+                ))}
+              </Tabs>
             </div>
           </section>
 
