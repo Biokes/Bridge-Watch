@@ -1,12 +1,14 @@
 import type {
   ApiKeyRecord,
   Asset,
+  AssetMetadata,
   AssetInfo,
   AssetWithHealth,
   Bridge,
   BridgeStats,
   CreateApiKeyRequest,
   CreateApiKeyResponse,
+  DependencyGraph,
   HealthScore,
   TransactionFilters,
   TransactionPage,
@@ -124,6 +126,26 @@ export function getAssetInfo(symbol: string) {
   return fetchApi<AssetInfo | null>(`/assets/${symbol}/info`);
 }
 
+export function getAssetMetadataBySymbol(symbol: string) {
+  return fetchApi<AssetMetadata>(`/metadata/symbol/${symbol}`);
+}
+
+export function upsertAssetMetadata(payload: {
+  assetId: string;
+  symbol: string;
+  metadata: {
+    category?: string | null;
+    tags?: string[];
+    description?: string | null;
+  };
+  updatedBy: string;
+}) {
+  return fetchApi<AssetMetadata>("/metadata", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getAssetPriceHistory(symbol: string, timeframe: string) {
   return fetchApi<Array<{ source: string; price: number; timestamp: string }>>(
     `/assets/${symbol}/price/history?timeframe=${timeframe}`
@@ -236,6 +258,22 @@ export function getBridges() {
 
 export function getBridgeStats(bridge: string) {
   return fetchApi<BridgeStats | null>(`/bridges/${bridge}/stats`);
+}
+
+export function getDependencyGraph(filters?: {
+  type?: string;
+  status?: string;
+  search?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.search) params.set("q", filters.search);
+
+  const query = params.toString();
+  return fetchApi<DependencyGraph>(
+    `/metadata/dependencies${query ? `?${query}` : ""}`
+  );
 }
 
 // Transactions
