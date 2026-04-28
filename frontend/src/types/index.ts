@@ -148,6 +148,17 @@ export interface AssetInfo {
   sourceChain?: string;
 }
 
+export interface AssetMetadata {
+  id: string;
+  asset_id: string;
+  symbol: string;
+  category: string | null;
+  tags: string[];
+  description?: string | null;
+  updated_at?: string;
+  version?: number;
+}
+
 export interface PriceSource {
   source: string;
   price: number;
@@ -187,4 +198,26 @@ export interface CreateApiKeyRequest {
 export interface CreateApiKeyResponse {
   apiKey: string;
   key: ApiKeyRecord;
+}
+
+/** Service dependency graph (`/metadata/dependencies`) */
+export type DependencyNodeStatus = "healthy" | "degraded" | "down" | "unknown";
+
+export type DependencyNodeType = string;
+
+export interface DependencyGraph {
+  summary: {
+    totalNodes: number;
+    degradedServices: number;
+    downServices: number;
+  };
+  nodes: Array<{
+    id: string;
+    label: string;
+    description: string;
+    type: DependencyNodeType;
+    status: DependencyNodeStatus;
+    impactHint: string;
+  }>;
+  edges: Array<{ from: string; to: string; kind: string }>;
 }
