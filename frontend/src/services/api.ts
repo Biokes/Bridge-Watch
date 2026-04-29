@@ -15,6 +15,10 @@ import type {
   HealthScore,
   TransactionFilters,
   TransactionPage,
+  ExportDataType,
+  ExportFilters,
+  ExportFormat,
+  ExportRecord,
   UpdateAlertRoutingRuleRequest,
 } from "../types";
 const API_BASE_URL = "/api/v1";
@@ -65,6 +69,36 @@ export async function getServerHealth(): Promise<{ status: string; timestamp: st
   return response.json();
 }
 
+export type ExportStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface ExportRequestPayload {
+  format: ExportFormat;
+  dataType: ExportDataType;
+  filters: ExportFilters;
+  emailDelivery?: boolean;
+  emailAddress?: string;
+}
+
+export async function requestExport(payload: ExportRequestPayload): Promise<ExportRecord> {
+  const response = await fetchApi<{ export: ExportRecord }>("/exports", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return response.export;
+}
+
+export async function getExportStatus(exportId: string): Promise<ExportRecord> {
+  const response = await fetchApi<{ export: ExportRecord }>(`/exports/${exportId}`);
+  return response.export;
+}
+
+export async function generateExportDownloadLink(exportId: string): Promise<string> {
+  const response = await fetchApi<{ downloadLink: { url: string; expiresAt: string } }>(
+    `/exports/${exportId}/download`
+  );
+  return response.downloadLink.url;
+}
+
 export interface SystemStatus {
   status: "healthy" | "unhealthy" | "degraded";
   timestamp: string;
@@ -85,6 +119,8 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   }
   return response.json();
 }
+
+
 
 // Assets
 export function getAssets() {
