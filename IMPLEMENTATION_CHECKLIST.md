@@ -283,6 +283,43 @@
 ✅ Code quality standards met
 ✅ Ready for PR submission
 
+## Cache Priming Job - Implementation Checklist (Issue #381)
+
+### ✅ Cache Priming Service
+- [x] Unified `CachePrimerService` created
+- [x] High vs Low priority task classification
+- [x] Metric tracking for success/failure/duration
+- [x] Error handling with partial fill behavior
+- [x] Configurable concurrency for asset prices
+
+### ✅ Integration & Scheduling
+- [x] High-priority priming registered for server startup
+- [x] Scheduled hourly refresh for critical metrics
+- [x] Scheduled daily full refresh (03:00 UTC)
+- [x] Registered worker processor `cache-priming`
+
+### ✅ Metrics & Observability
+- [x] `cache_priming_total` counter added
+- [x] `cache_priming_success_total` counter added
+- [x] `cache_priming_failure_total` counter added
+- [x] `cache_priming_duration_seconds` histogram added
+- [x] Detailed logging with context
+
+### ✅ Documentation
+- [x] `backend/docs/CACHE_PRIMING_STRATEGY.md` created
+- [x] Updated legacy `cacheWarming.ts` to use new service
+
+## Files Created (3)
+1. backend/src/services/cachePrimer.service.ts
+2. backend/src/workers/cachePrimer.job.ts
+3. backend/docs/CACHE_PRIMING_STRATEGY.md
+
+## Files Modified (4)
+1. backend/src/services/metrics.service.ts
+2. backend/src/workers/index.ts
+3. backend/src/jobs/cacheWarming.ts
+4. IMPLEMENTATION_CHECKLIST.md
+
 ## Files Created (10)
 
 1. backend/src/services/analytics.service.ts
