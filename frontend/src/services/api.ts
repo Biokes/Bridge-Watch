@@ -1,16 +1,21 @@
 import type {
+  AlertRoutingAuditEntry,
+  AlertRoutingRule,
   ApiKeyRecord,
   Asset,
   AssetMetadata,
   AssetInfo,
   AssetWithHealth,
+  CreateAlertRoutingRuleRequest,
   Bridge,
   BridgeStats,
   CreateApiKeyRequest,
   CreateApiKeyResponse,
+  DependencyGraph,
   HealthScore,
   TransactionFilters,
   TransactionPage,
+  UpdateAlertRoutingRuleRequest,
 } from "../types";
 const API_BASE_URL = "/api/v1";
 
@@ -42,6 +47,10 @@ async function fetchApi<T>(
     }
     const suffix = detail ? `: ${detail}` : "";
     throw new Error(`API error: ${response.status} ${response.statusText}${suffix}`);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
   }
 
   return response.json();
@@ -349,6 +358,82 @@ export function extendApiKey(apiKey: string, id: string, extraDays: number) {
       method: "POST",
       body: JSON.stringify({ extraDays }),
     },
+    apiKey
+  );
+}
+
+// Alert routing admin
+export function listAlertRoutingRules(apiKey: string, ownerAddress?: string) {
+  const suffix = ownerAddress
+    ? `?ownerAddress=${encodeURIComponent(ownerAddress)}`
+    : "";
+  return fetchApi<{ rules: AlertRoutingRule[] }>(
+    `/admin/alert-routing/rules${suffix}`,
+    undefined,
+    apiKey
+  );
+}
+
+export function createAlertRoutingRule(
+  apiKey: string,
+  payload: CreateAlertRoutingRuleRequest
+) {
+  return fetchApi<{ rule: AlertRoutingRule }>(
+    "/admin/alert-routing/rules",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    apiKey
+  );
+}
+
+export function updateAlertRoutingRule(
+  apiKey: string,
+  id: string,
+  payload: UpdateAlertRoutingRuleRequest
+) {
+  return fetchApi<{ rule: AlertRoutingRule }>(
+    `/admin/alert-routing/rules/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    apiKey
+  );
+}
+
+export function deleteAlertRoutingRule(apiKey: string, id: string) {
+  return fetchApi<Record<string, never>>(
+    `/admin/alert-routing/rules/${id}`,
+    {
+      method: "DELETE",
+    },
+    apiKey
+  );
+}
+
+export function getAlertRoutingAudit(
+  apiKey: string,
+  options?: {
+    ownerAddress?: string;
+    status?: "queued" | "delivered" | "suppressed" | "failed" | "fallback";
+    channel?: string;
+    limit?: number;
+  }
+) {
+  const params = new URLSearchParams();
+  if (options?.ownerAddress) params.set("ownerAddress", options.ownerAddress);
+  if (options?.status) params.set("status", options.status);
+  if (options?.channel) params.set("channel", options.channel);
+  if (options?.limit) params.set("limit", String(options.limit));
+
+  const qs = params.toString();
+  const suffix = qs ? `?${qs}` : "";
+
+  return fetchApi<{ entries: AlertRoutingAuditEntry[] }>(
+    `/admin/alert-routing/audit${suffix}`,
+    undefined,
     apiKey
   );
 }
