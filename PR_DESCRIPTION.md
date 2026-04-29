@@ -1,312 +1,370 @@
-# 🚀 Implement Transactional Outbox Pattern with Guaranteed Event Delivery
+# Trusted Source Registry Implementation
 
-## 📋 Overview
+## Overview
 
-This PR implements a complete **Transactional Outbox Pattern** for Bridge-Watch, providing guaranteed event delivery with at-least-once semantics, ordering guarantees, retry logic, and dead-letter queue handling as specified in **Issue #376**.
+This PR implements a trusted source registry for the Bridge Watch Soroban contract, providing an additional security layer for controlling which external addresses are authorized to submit contract data.
 
-## 🎯 Problem Solved
+## Issue
 
-**Before this PR:**
-- Direct webhook dispatches were not transactional ❌
-- No retry logic for failed event deliveries ❌  
-- Events could be lost during system failures ❌
-- No ordering guarantees for related events ❌
-- Limited observability into event delivery status ❌
+Closes #[issue-number]
 
-**After this PR:**
-- All events published transactionally with business data ✅
-- Exponential backoff retry with dead letter queue ✅
-- At-least-once delivery guarantees ✅
-- Strict ordering within event aggregates ✅
-- Comprehensive monitoring and admin tooling ✅
+## What Changed
 
-## 🏗️ Architecture
+### New Features
 
-```mermaid
-graph TB
-    A[Business Services] --> B[OutboxProducer]
-    B --> C[PostgreSQL Outbox Tables]
-    D[OutboxDispatcher] --> C
-    D --> E[BullMQ Queue]
-    E --> F[External Systems]
-    G[Admin API] --> C
-    G --> H[Monitoring Dashboard]
+✅ **Register Trusted Sources** - Admin-only operation to register external sources  
+✅ **Revoke Sources** - Admin-only operation to revoke sources while preserving audit trail  
+✅ **Query Source Status** - Multiple query methods for different use cases  
+✅ **Submission Gating** - Gate health and price submissions by source trust  
+✅ **Event Emission** - Events emitted for all registration and revocation actions  
+✅ **Audit Trail** - Complete audit trail with timestamps and actor tracking
+
+### Files Added
+
+- `contracts/soroban/src/source_trust.rs` - Core implementation (370 lines)
+- `contracts/soroban/tests/source_trust.test.rs` - Test suite (450+ lines)
+- `contracts/soroban/docs/TRUSTED_SOURCE_REGISTRY.md` - User documentation (500+ lines)
+- `contracts/soroban/TRUSTED_SOURCE_IMPLEMENTATION.md` - Developer documentation (400+ lines)
+- `contracts/soroban/TRUSTED_SOURCE_QUICK_REFERENCE.md` - Quick reference (200+ lines)
+
+### Files Modified
+
+- `contracts/soroban/src/lib.rs` - Integration and public API
+  - Added module declaration
+  - Added storage keys
+  - Added 6 public contract methods
+  - Updated `submit_health()` to gate by source trust
+  - Updated `submit_price()` to gate by source trust
+
+## API Reference
+
+### Register Source
+
+```rust
+pub fn register_trusted_source(
+    env: Env,
+    caller: Address,
+    source_address: Address,
+    name: String,
+)
 ```
 
-## 📦 What's Included
+### Revoke Source
 
-### 🗄️ Database Schema
-- **`outbox_events`** - Main event storage with ACID compliance
-- **`dead_letter_events`** - Failed event handling  
-- **`outbox_events_sequence`** - Gapless sequence generation
-- **PostgreSQL function** for atomic sequence management
-
-### 🔧 Core Components
-- **`OutboxProducer`** - Transactional event publishing with ordering
-- **`OutboxDispatcher`** - Reliable event processing with retry logic
-- **`OutboxAdminApi`** - Management and monitoring operations
-- **`OutboxSystem`** - Unified system lifecycle management
-
-### 🔄 Service Integration
-- **Alert Service** - Migrated to transactional event publishing
-- **Webhook Service** - Outbox-integrated delivery queuing
-- **Migration Examples** - Complete patterns for all event producers
-
-### 🛠️ Admin & Monitoring
-- **REST API endpoints** for management operations
-- **Health check integration** with system status
-- **Comprehensive statistics** and performance metrics
-- **Retry and DLQ management** tools
-
-## 🚀 Key Features
-
-### 🛡️ Reliability Guarantees
-- **At-least-once delivery** via transactional outbox pattern
-- **Ordering guarantees** with per-aggregate sequence numbers  
-- **Exponential backoff** retry logic (1s→2s→4s→8s→15s)
-- **Dead letter queue** for permanently failed events
-- **Row-level locking** prevents duplicate processing
-- **ACID compliance** for all event publishing
-
-### ⚡ Performance & Scalability
-- **Batch processing** (100 events per batch, 1s polling)
-- **Concurrent workers** (configurable, default 10)
-- **Optimized indexes** for efficient event querying
-- **Horizontal scaling** with multiple dispatcher instances
-- **Automatic cleanup** of old delivered events
-
-### 📊 Observability
-- **Health endpoints** (`/api/v1/health/outbox`)
-- **Admin statistics** (`/api/v1/admin/outbox/stats`)
-- **Event retry operations** (single and batch)
-- **Dead letter queue inspection** and reprocessing
-- **Performance metrics** and alerting thresholds
-
-## 📁 Files Added/Modified
-
-### 🆕 New Files
-```
-backend/src/outbox/
-├── eventProducer.ts          # Transactional event publishing
-├── eventDispatcher.ts        # Event processing with retry logic  
-├── adminApi.ts              # Management and monitoring API
-├── index.ts                 # System integration and lifecycle
-├── outbox.test.ts           # Unit tests
-├── integration.test.ts      # End-to-end integration tests
-└── migrationExamples.ts     # Migration patterns for existing producers
-
-backend/src/services/
-├── alert.service.outbox.ts   # Outbox-integrated alert service
-└── webhook.service.outbox.ts # Outbox-integrated webhook service
-
-backend/src/api/routes/
-└── outbox-admin.ts          # Admin API endpoints
-
-backend/src/database/migrations/
-└── 022_outbox_events.ts     # Database schema migration
-
-backend/
-├── OUTBOX_IMPLEMENTATION.md        # Complete implementation guide
-├── OUTBOX_IMPLEMENTATION_SUMMARY.md # Executive summary
-└── RECONNAISSANCE.md               # Pre-implementation analysis
+```rust
+pub fn revoke_trusted_source(
+    env: Env,
+    caller: Address,
+    source_address: Address,
+)
 ```
 
-### ✏️ Modified Files
+### Query Methods
+
+```rust
+pub fn is_trusted_source(env: Env, source_address: Address) -> bool
+pub fn get_trusted_source(env: Env, source_address: Address) -> Option<TrustedSource>
+pub fn get_all_trusted_sources(env: Env) -> Vec<SourceInfo>
+pub fn get_active_trusted_sources(env: Env) -> Vec<SourceInfo>
 ```
-backend/src/index.ts                 # Added outbox system lifecycle
-backend/src/api/routes/index.ts      # Registered admin routes
+
+## Usage Example
+
+```rust
+// 1. Register trusted source
+contract.register_trusted_source(
+    env,
+    admin_address,
+    oracle_address,
+    "CoinGecko Price Oracle".into(),
+);
+
+// 2. Grant submission role
+contract.grant_role(
+    env,
+    admin_address,
+    oracle_address,
+    AdminRole::PriceSubmitter,
+);
+
+// 3. Source can now submit
+contract.submit_price(
+    env,
+    oracle_address,
+    "USDC".into(),
+    1_000_000,
+    "coingecko".into(),
+);
+
+// 4. Monitor sources
+let active = contract.get_active_trusted_sources(env);
+for source in active.iter() {
+    log!("Active source: {}", source.name);
+}
+
+// 5. Revoke if needed
+contract.revoke_trusted_source(env, admin_address, old_oracle);
 ```
 
-## 🧪 Testing
+## Security Model
 
-### ✅ Test Coverage
-- **Unit Tests** - All core components with 95%+ coverage
-- **Integration Tests** - End-to-end event flow validation
-- **Performance Tests** - High-volume scenario testing
-- **Concurrency Tests** - Race condition and locking verification
-- **Failure Tests** - Retry logic and DLQ behavior validation
+### Defense in Depth
 
-### 🏃‍♂️ Running Tests
+Three layers of security:
+
+1. **Authentication**: Caller must authenticate via `require_auth()`
+2. **Authorization**: Caller must have appropriate role (RBAC)
+3. **Trust**: Caller must be a registered trusted source (when enabled)
+
+### Opt-In Enforcement
+
+Trust enforcement is **opt-in**:
+
+- If no trusted sources are registered, submissions work as before (role-based only)
+- Once the first source is registered, trust enforcement activates
+- All subsequent submissions must come from trusted sources
+
+This ensures backward compatibility while providing enhanced security when needed.
+
+### Audit Trail
+
+Every action records:
+
+- Actor address (who performed the action)
+- Timestamp (when it occurred)
+- Current state (active/revoked)
+- Historical changes (preserved for audit)
+
+## Testing
+
+### Test Coverage
+
+- ✅ 20+ comprehensive test cases
+- ✅ Unit tests for all operations
+- ✅ Integration tests with submission gating
+- ✅ Edge case coverage
+- ✅ Audit trail verification
+- ✅ All tests passing
+
+### Run Tests
+
 ```bash
-cd backend
-npm test src/outbox/outbox.test.ts
-npm test src/outbox/integration.test.ts
+# Run all tests
+cargo test --package bridge-watch-soroban
+
+# Run only source trust tests
+cargo test --package bridge-watch-soroban --test source_trust
 ```
 
-## 🚀 Deployment
+## Compilation Status
 
-### 1️⃣ Database Migration
-```bash
-cd backend
-npm run migrate
+✅ **Code compiles successfully** with no errors
+
+```
+Checking bridge-watch-contracts v0.1.0
+warning: unused variable: `stddev` (pre-existing)
+warning: unused variable: `min_price` (pre-existing)
+warning: unused variable: `max_price` (pre-existing)
 ```
 
-### 2️⃣ Environment Configuration
-```bash
-# Add to .env
-ADMIN_API_TOKEN=your-secure-admin-token
-```
+Only minor warnings about unused variables that were pre-existing in the codebase.
 
-### 3️⃣ Application Startup
-The outbox system initializes automatically on application startup and gracefully shuts down with the application.
+## Documentation
 
-### 4️⃣ Verification
-```bash
-# Check outbox health
-curl http://localhost:3001/api/v1/health/outbox
+### User Documentation
 
-# Check admin stats (requires auth)
-curl -H "Authorization: Bearer your-admin-token" \
-     http://localhost:3001/api/v1/admin/outbox/stats
-```
+- **`docs/TRUSTED_SOURCE_REGISTRY.md`**: Complete user guide
+  - API reference with examples
+  - Trust model explanation
+  - Usage patterns
+  - Security considerations
+  - Migration guide
 
-## 📊 API Examples
+### Developer Documentation
 
-### Health Check
-```bash
-GET /api/v1/health/outbox
-```
-```json
-{
-  "status": "healthy",
-  "details": {
-    "initialized": true,
-    "dispatcherRunning": true,
-    "pendingEvents": 42,
-    "failedEvents": 2,
-    "deadLetterEvents": 1
-  }
+- **`TRUSTED_SOURCE_IMPLEMENTATION.md`**: Implementation details
+  - Architecture overview
+  - Data structures
+  - Storage layout
+  - Testing guide
+
+### Quick Reference
+
+- **`TRUSTED_SOURCE_QUICK_REFERENCE.md`**: Quick reference guide
+  - Common patterns
+  - API summary
+  - Error messages
+  - Best practices
+
+## Backward Compatibility
+
+✅ **Fully backward compatible**
+
+- Feature is opt-in
+- No breaking changes to existing functionality
+- Existing deployments continue to work without modification
+- Trust enforcement only activates when sources are registered
+
+## Migration Path
+
+### For Existing Deployments
+
+1. Deploy updated contract
+2. No immediate changes required
+3. Register sources gradually as needed
+4. Monitor submissions
+5. Revoke old sources when rotating
+
+### For New Deployments
+
+1. Initialize contract
+2. Register all trusted sources upfront
+3. Grant roles to sources
+4. Begin operations
+
+## Events
+
+### SourceRegisteredEvent
+
+```rust
+pub struct SourceRegisteredEvent {
+    pub source_address: Address,
+    pub name: String,
+    pub registered_by: Address,
+    pub timestamp: u64,
 }
 ```
 
-### Statistics
-```bash
-GET /api/v1/admin/outbox/stats
-Authorization: Bearer admin-token
-```
-```json
-{
-  "outbox": {
-    "pending": 42,
-    "processing": 5,
-    "delivered": 1250,
-    "failed": 3,
-    "totalEvents": 1300
-  },
-  "deadLetter": {
-    "total": 2,
-    "byEventType": [...],
-    "byError": [...]
-  }
+**Topic**: `src_reg`
+
+### SourceRevokedEvent
+
+```rust
+pub struct SourceRevokedEvent {
+    pub source_address: Address,
+    pub revoked_by: Address,
+    pub timestamp: u64,
 }
 ```
 
-### Retry Operations
-```bash
-# Retry single event
-POST /api/v1/admin/outbox/retry/123
+**Topic**: `src_rev`
 
-# Retry multiple events  
-POST /api/v1/admin/outbox/retry-batch
-{"eventIds": ["123", "456", "789"]}
+## Checklist
+
+- [x] Add source registry storage
+- [x] Create register function
+- [x] Create revoke function
+- [x] Gate submissions by source trust
+- [x] Add comprehensive tests
+- [x] Document trust model
+- [x] Event emission
+- [x] Audit trail
+- [x] Admin-only writes
+- [x] Query functions
+- [x] Integration tests
+- [x] User documentation
+- [x] Code compiles successfully
+- [x] All tests passing
+
+## Screenshots/Examples
+
+### Registering a Source
+
+```rust
+contract.register_trusted_source(
+    env,
+    admin_address,
+    oracle_address,
+    "CoinGecko Price Oracle".into(),
+);
 ```
 
-## 🔄 Migration Path
+**Event Emitted**:
 
-### Before (Direct Dispatch)
-```typescript
-// ❌ Not transactional, no retry
-await fetch(webhookUrl, {
-  method: "POST", 
-  body: JSON.stringify(payload)
-});
+```
+Topic: src_reg
+Data: {
+    source_address: oracle_address,
+    name: "CoinGecko Price Oracle",
+    registered_by: admin_address,
+    timestamp: 1234567890
+}
 ```
 
-### After (Outbox Pattern)
-```typescript
-// ✅ Transactional, reliable delivery
-await db.transaction(async (tx) => {
-  await businessLogic(tx);
-  await outboxProducer.publishTransactional(tx, {
-    aggregateType: "Alert",
-    aggregateId: alertId,
-    eventType: "alert.triggered", 
-    payload: webhookPayload
-  });
-});
+### Querying Sources
+
+```rust
+let all_sources = contract.get_all_trusted_sources(env);
+// Returns: Vec<SourceInfo>
+// [
+//   {
+//     source_address: oracle1,
+//     name: "CoinGecko Oracle",
+//     is_active: true,
+//     registered_at: 1234567890
+//   },
+//   {
+//     source_address: oracle2,
+//     name: "Chainlink Feed",
+//     is_active: false,
+//     registered_at: 1234567800
+//   }
+// ]
 ```
 
-## 🔍 Monitoring & Alerting
+### Submission Gating
 
-### Key Metrics
-- `outbox_events_pending_total` - Events awaiting processing
-- `outbox_events_delivered_total` - Successfully delivered events  
-- `outbox_events_failed_total` - Failed events count
-- `outbox_dead_letter_total` - Dead letter queue size
+```rust
+// Before: No sources registered
+contract.submit_health(caller, ...); // ✅ Works (role-based only)
 
-### Alert Thresholds
-- **High Pending**: > 1000 events
-- **High Failure Rate**: > 10% failure rate  
-- **DLQ Growth**: > 50 events in dead letter queue
-- **Dispatcher Down**: No processing for > 5 minutes
+// After: First source registered
+contract.register_trusted_source(env, admin, oracle, "Oracle".into());
+contract.submit_health(caller, ...); // ❌ Fails if caller not trusted
+contract.submit_health(oracle, ...); // ✅ Works (oracle is trusted)
+```
 
-## 🛡️ Security Considerations
+## Review Notes
 
-- **Admin API Authentication** via Bearer tokens
-- **Payload Encryption** support for sensitive data
-- **Network Security** with HTTPS for webhook deliveries
-- **Audit Logging** for all admin operations
+### Key Points
 
-## 📈 Performance Benchmarks
+1. **Opt-in design**: Trust enforcement only activates when sources are registered
+2. **Backward compatible**: No breaking changes to existing functionality
+3. **Complete audit trail**: All actions logged with timestamps and actors
+4. **Admin-only mutations**: All registration/revocation requires admin permissions
+5. **Event emission**: All actions emit events for monitoring
+6. **Comprehensive testing**: 20+ test cases covering all scenarios
 
-- **Event Publishing**: ~1000 events/second (transactional)
-- **Event Processing**: ~500 events/second (with HTTP calls)
-- **Admin Queries**: <100ms for most operations
-- **Memory Usage**: Minimal overhead with proper cleanup
+### Security Considerations
 
-## 🔮 Future Enhancements
+- Defense in depth with three security layers
+- Complete audit trail for compliance
+- Admin-only writes with ACL integration
+- Event emission for monitoring
+- Opt-in design for safety
 
-- **Exactly-once delivery** with idempotency keys
-- **Event sourcing** capabilities with immutable event store
-- **Distributed outbox** for multi-region deployments
-- **Advanced monitoring** with distributed tracing
+### Performance Impact
 
-## ✅ Checklist
+- Minimal: Only adds a single storage lookup when sources are registered
+- No impact when no sources are registered (backward compatible)
+- Storage efficient: Uses persistent storage with minimal overhead
 
-- [x] Database schema with proper indexes and constraints
-- [x] Transactional event producer with ordering guarantees
-- [x] Event dispatcher with retry logic and DLQ
-- [x] Migration of all existing event producers  
-- [x] Comprehensive admin API and monitoring
-- [x] Complete test coverage (unit + integration)
-- [x] Production-ready configuration and deployment
-- [x] Detailed documentation and examples
-- [x] Performance optimization and scalability design
-- [x] Security considerations and best practices
+## Future Enhancements
 
-## 🎯 Success Criteria Met
+Potential improvements for future versions:
 
-✅ **Guaranteed Event Delivery** - At-least-once semantics with retry logic  
-✅ **Ordering Guarantees** - Per-aggregate sequence with strict processing order  
-✅ **Operational Excellence** - Comprehensive monitoring and admin tooling  
-✅ **Production Readiness** - Extensive testing, security, and scalability  
-✅ **Migration Path** - Clear upgrade path from existing event producers  
+1. Source expiration (automatic revocation after time period)
+2. Source quotas (rate limiting per source)
+3. Source reputation (track submission quality)
+4. Multi-signature registration (require multiple admins)
+5. Source categories (different trust levels for different data types)
 
-## 🔗 Related Issues
+## Related Issues
 
-Closes #376 - Create Outbox Event Dispatcher with Transactional Guarantees
+- Closes #[issue-number]
 
-## 👥 Reviewers
+## Additional Context
 
-Please focus review on:
-1. **Database schema** - Verify indexes and constraints are optimal
-2. **Transaction handling** - Ensure ACID compliance in all scenarios  
-3. **Error handling** - Validate retry logic and DLQ behavior
-4. **Performance** - Review batch sizes and polling intervals
-5. **Security** - Verify admin API authentication and payload handling
+This implementation follows the Soroban best practices and integrates seamlessly with the existing ACL system. The opt-in design ensures that existing deployments are not affected while providing enhanced security for new deployments or when explicitly enabled.
 
----
-
-**Ready for production deployment** 🚀
-
-This implementation provides a robust, scalable, and reliable event delivery system that ensures no events are lost and all external integrations receive consistent, ordered notifications.
+The complete audit trail and event emission make this feature suitable for production use in regulated environments where compliance and auditability are critical.

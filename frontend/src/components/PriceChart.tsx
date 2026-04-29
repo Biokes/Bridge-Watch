@@ -19,6 +19,7 @@ import {
   getVisualizationTheme,
 } from "../styles/colors";
 import type { ChartAnnotation } from "../hooks/useChartAnnotations";
+import HelpIcon from "./help/HelpIcon";
 
 interface PriceDataPoint {
   timestamp: string;
@@ -99,8 +100,12 @@ export default function PriceChart({
   if (isLoading) {
     return (
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
           {symbol} Price History
+          <HelpIcon
+            content="Aggregated price feeds from multiple oracle sources. Each line represents a distinct data provider. Divergence between lines may indicate a price anomaly."
+            placement="auto"
+          />
         </h3>
         <div className="h-64 flex items-center justify-center">
           <span className="text-stellar-text-secondary">Loading chart data...</span>
@@ -112,8 +117,12 @@ export default function PriceChart({
   if (chartData.length === 0) {
     return (
       <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
           {symbol} Price History
+          <HelpIcon
+            content="Aggregated price feeds from multiple oracle sources. Each line represents a distinct data provider. Divergence between lines may indicate a price anomaly."
+            placement="auto"
+          />
         </h3>
         <div className="h-64 flex items-center justify-center">
           <span className="text-stellar-text-secondary">
@@ -126,8 +135,12 @@ export default function PriceChart({
 
   return (
     <div className="bg-stellar-card border border-stellar-border rounded-lg p-6">
-      <h3 className="text-lg font-semibold text-white mb-4">
+      <h3 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
         {symbol} Price History
+        <HelpIcon
+          content="Aggregated price feeds from multiple oracle sources. Each line represents a distinct data provider. Divergence between lines may indicate a price anomaly."
+          placement="auto"
+        />
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>

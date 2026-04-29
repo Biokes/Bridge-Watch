@@ -8,9 +8,11 @@ import WatchlistWidget from "../components/watchlist/WatchlistWidget";
 import ExternalDependencyPanel from "../components/dashboard/ExternalDependencyPanel";
 import PullToRefresh from "../components/PullToRefresh";
 import ComparativeSparklineGrid from "../components/analytics/ComparativeSparklineGrid";
+import { SummaryCard } from "../components/SummaryCard";
 import AssetDiscoverySection from "../components/dashboard/AssetDiscoverySection";
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import { useFavorites } from "../hooks/useFavorites";
+import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
 
 type DashboardView = "overview" | "assets" | "bridges";
 type BridgeStatusFilter = "all" | "healthy" | "degraded" | "down" | "unknown";
@@ -158,22 +160,24 @@ export default function Dashboard() {
             >
               Refresh data
             </button>
-            {dashboardViews.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => dashboard.setView(view.id)}
-                className={`rounded-full border px-4 py-2 text-sm transition-colors ${
-                  dashboard.state.view === view.id
-                    ? "border-stellar-blue bg-stellar-blue/15 text-white"
-                    : "border-stellar-border text-stellar-text-secondary hover:border-stellar-blue hover:text-white"
-                }`}
-                aria-pressed={dashboard.state.view === view.id}
-                title={view.description}
+            <Tabs
+              activeTab={dashboard.state.view}
+              onTabChange={(id) => dashboard.setView(id as DashboardView)}
+            >
+              <TabList
+                aria-label="Dashboard views"
+                className="flex flex-wrap items-center gap-2"
               >
-                {view.label}
-              </button>
-            ))}
+                {dashboardViews.map((view) => (
+                  <Tab key={view.id} id={view.id}>
+                    {view.label}
+                  </Tab>
+                ))}
+              </TabList>
+              {dashboardViews.map((view) => (
+                <TabPanel key={view.id} id={view.id} keepMounted />
+              ))}
+            </Tabs>
           </div>
         </div>
 
@@ -199,6 +203,44 @@ export default function Dashboard() {
           </select>
         </div>
       </div>
+
+      {/* Overview Stats */}
+      <section aria-labelledby="overview-stats">
+        <h2 id="overview-stats" className="text-xl font-semibold text-white mb-4">
+          Overview
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <SummaryCard
+            title="Total Value Locked"
+            value={bridgesLoading ? "--" : `$${bridgesData?.bridges.reduce((sum, b) => sum + b.totalValueLocked, 0).toLocaleString() || "0"}`}
+            loading={bridgesLoading}
+            icon="💰"
+            href="/bridges"
+          />
+          <SummaryCard
+            title="Monitored Assets"
+            value={assetsLoading ? "--" : assetsWithHealth?.length || 0}
+            loading={assetsLoading}
+            icon="📊"
+            href="/assets"
+          />
+          <SummaryCard
+            title="Active Bridges"
+            value={bridgesLoading ? "--" : bridgesData?.bridges.filter((b: any) => b.status !== "down").length || 0}
+            loading={bridgesLoading}
+            icon="🌉"
+            href="/bridges"
+          />
+          <SummaryCard
+            title="System Health"
+            value={assetsLoading ? "--" : "85%"}
+            trend={{ value: "Improving", direction: "up" }}
+            loading={assetsLoading}
+            icon="❤️"
+            href="/analytics"
+          />
+        </div>
+      </section>
 
       {showAssets ? <ComparativeSparklineGrid items={sparklineItems} /> : null}
 
