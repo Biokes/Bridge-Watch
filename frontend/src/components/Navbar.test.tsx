@@ -6,10 +6,11 @@ import { WebSocketProvider } from "../contexts/WebSocketContext";
 import { WatchlistProvider } from "../hooks/useWatchlist";
 import ThemeProvider from "../theme/ThemeProvider";
 import Navbar from "./Navbar";
+import { useNotificationStore } from "../stores/notificationStore";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-});
+function resetNotifications() {
+  useNotificationStore.setState(useNotificationStore.getInitialState(), true);
+}
 
 describe("Navbar", () => {
   it("toggles the mobile navigation panel", () => {
