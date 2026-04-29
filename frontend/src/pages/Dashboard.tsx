@@ -13,6 +13,7 @@ import AssetDiscoverySection from "../components/dashboard/AssetDiscoverySection
 import FavoriteTagChip from "../components/favorites/FavoriteTagChip";
 import { useFavorites } from "../hooks/useFavorites";
 import { Tabs, TabList, Tab, TabPanel } from "../components/Tabs";
+import { RecentActivityTimeline } from "../components/timeline";
 
 type DashboardView = "overview" | "assets" | "bridges";
 type BridgeStatusFilter = "all" | "healthy" | "degraded" | "down" | "unknown";
@@ -256,6 +257,16 @@ export default function Dashboard() {
       {showAssets ? <WatchlistWidget /> : null}
 
       {showAssets ? <ExternalDependencyPanel /> : null}
+
+      {/* Recent Activity Timeline */}
+      <section>
+        <RecentActivityTimeline
+          maxEvents={50}
+          defaultMode="compact"
+          showFilters={true}
+          showHeader={true}
+        />
+      </section>
 
       {showBridges ? (
         <section>
