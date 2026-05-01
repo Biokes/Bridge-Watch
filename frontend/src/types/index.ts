@@ -87,6 +87,33 @@ export interface TransactionPage {
   totalPages: number;
 }
 
+export type ExportFormat = "csv" | "json";
+
+export type ExportDataType = "analytics" | "transactions" | "health_metrics";
+
+export type ExportStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface ExportFilters {
+  startDate: string;
+  endDate: string;
+  assetCodes?: string[];
+  bridgeIds?: string[];
+}
+
+export interface ExportRecord {
+  id: string;
+  requested_by: string;
+  format: ExportFormat;
+  data_type: ExportDataType;
+  filters: ExportFilters;
+  status: ExportStatus;
+  download_url: string | null;
+  download_url_expires_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // WebSocket connection
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 

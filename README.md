@@ -168,6 +168,7 @@ WS   /api/v1/ws                        # WebSocket for real-time updates
 - Watchlist feature: [docs/watchlist-feature.md](docs/watchlist-feature.md)
 - Visualization color system: [docs/data-visualization-color-system.md](docs/data-visualization-color-system.md)
 - Contract integration SDK: [sdk/README.md](sdk/README.md)
+- Export picker flow: [docs/user-guide/export-picker-flow.md](docs/user-guide/export-picker-flow.md)
 
 
 ## Roadmap
